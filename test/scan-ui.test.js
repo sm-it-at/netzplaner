@@ -128,6 +128,8 @@ test("an expired scanner token releases job controls and allows reconnect withou
 test("invalid scan range never submits a job and pagehide clears token and polling", async (t) => {
   const app = await setup(t); await app.connect(); await app.start("192.168.0.0/16");
   assert.equal(app.requests.length, 2); assert.match(app.$("#scan-status").textContent, /maximal 256/);
+  await app.start("192.168.1.77/24");
+  assert.equal(app.requests.length, 2); assert.match(app.$("#scan-status").textContent, /192\.168\.1\.0\/24 statt/);
   app.window.dispatchEvent(new app.window.Event("pagehide"));
   assert.equal(app.$("#scan-token").value, ""); assert.equal(app.window.localStorage.length, 0);
 });
@@ -143,6 +145,38 @@ test("failed scan status does not display backend details or claim successful co
   assert.match(app.$("#scan-status").textContent, /fehlgeschlagen/);
   assert.doesNotMatch(app.$("#scan-status").textContent, /SENSITIVE|abgeschlossen/);
   assert.equal(app.$("#scan-results").hidden, true); assert.equal(app.$("#scan-start").disabled, false);
+});
+
+test("a scanner timeout is explained, while other or crafted failure texts stay hidden", async (t) => {
+  for (const [error, expected] of [["Der Scan wurde nach 180 Sekunden beendet.", /kleineren Bereich/], ["constructor", /Der Scan ist fehlgeschlagen/], [{ text: "SENSITIVE" }, /Der Scan ist fehlgeschlagen/]]) {
+    await t.test(JSON.stringify(error), async (st) => {
+      const app = await setup(st, { respond: (url) => {
+        if (url.endsWith("/status")) return ok({ enabled: true });
+        if (url.endsWith("/config")) return ok({ allowedCidrs: ["192.168.1.0/24"], profiles: [{ id: "ports" }] });
+        if (url.endsWith("/jobs")) return ok({ id: "job-1", status: "running" });
+        return ok({ id: "job-1", status: "failed", target: "192.168.1.0/24", profile: "ports", error });
+      } });
+      await app.connect(); await app.start("192.168.1.0/24", "ports"); await app.tick();
+      assert.match(app.$("#scan-status").textContent, expected);
+      assert.equal(app.$("#scan-status").classList.contains("scan-error"), true);
+      assert.doesNotMatch(app.$("#scan-status").textContent, /SENSITIVE|function/);
+    });
+  }
+});
+
+test("a rejected scan start names the Host header only for the scanner's origin check", async (t) => {
+  for (const [body, expected] of [[{ error: "Origin und Host der Anfrage müssen übereinstimmen." }, /Host-Header/], [{ error: "Das Ziel liegt außerhalb der freigegebenen Scan-Netze." }, /nicht freigegeben/], [null, /nicht freigegeben/]]) {
+    await t.test(JSON.stringify(body), async (st) => {
+      const app = await setup(st, { respond: (url) => {
+        if (url.endsWith("/status")) return ok({ enabled: true });
+        if (url.endsWith("/config")) return ok({ allowedCidrs: ["192.168.1.0/24"], profiles: [{ id: "discovery" }] });
+        return { ok: false, status: 403, json: async () => { if (!body) throw new SyntaxError("Not JSON"); return body; } };
+      } });
+      await app.connect(); await app.start();
+      assert.match(app.$("#scan-status").textContent, expected);
+      assert.equal(app.$("#scan-start").disabled, false);
+    });
+  }
 });
 
 test("polling stops after 200 seconds while leaving explicit cancellation available", async (t) => {

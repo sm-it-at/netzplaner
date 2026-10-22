@@ -30,11 +30,15 @@ MAX_JOBS = 8
 JOB_TTL = 15 * 60
 SCAN_TIMEOUT = 180
 START_INTERVAL = 10
+MAX_RATE = 50
+HOST_TIMEOUT = 30
+PORT_HOSTGROUP = 8
+DISCOVERY_PROBES = "-PS22,80,443,445,3389,8080"
 PORTS = (22, 53, 80, 111, 139, 443, 445, 631, 2049, 2375, 2376, 3000,
          3306, 3389, 5000, 5001, 5432, 5900, 6379, 8000, 8006, 8080,
          8081, 8123, 8443, 9000, 9090, 9443, 32400)
-PROFILES = ({"id": "discovery", "name": "Geräte finden"},
-            {"id": "ports", "name": "Häufige TCP-Dienste"})
+PROFILES = ({"id": "discovery", "name": "Geräte suchen"},
+            {"id": "ports", "name": "Häufige TCP-Ports"})
 PRIVATE_NETWORKS = tuple(ipaddress.ip_network(value) for value in
                          ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
 JOB_ID = re.compile(r"[0-9a-f]{32}")
@@ -154,7 +158,7 @@ def parse_xml(data, target, profile):
                     continue
                 service = item.find("service")
                 ports[port] = {"port": port, "protocol": "tcp", "service": clean_text(service.get("name", "") if service is not None else "", 80)}
-            # -Pn reports all requested hosts as up: an open port is the evidence.
+            # The ports profile reports services: a host without an open listed port is no result.
             if not ports:
                 continue
         hostname = element.find("hostnames/hostname")
@@ -232,12 +236,15 @@ class ScanManager:
 
     @staticmethod
     def command(target, profile):
-        command = ["nmap", "--unprivileged", "-n", "--max-retries", "1", "--host-timeout", "30s",
-                   "--max-rate", "50", "--max-parallelism", "16", "-oX", "-"]
+        command = ["nmap", "--unprivileged", "-n", "--max-retries", "1", "--host-timeout", f"{HOST_TIMEOUT}s",
+                   "--max-rate", str(MAX_RATE), "--max-parallelism", "16", "-oX", "-"]
         if profile == "discovery":
-            command += ["-sn", "-PS22,80,443,445,3389,8080"]
+            command += ["-sn", DISCOVERY_PROBES]
         else:
-            command += ["-sT", "-Pn", "--open", "-p", ",".join(map(str, PORTS))]
+            # No -Pn: at MAX_RATE a /24 needs 256 * 29 / 50 = 149 s for probes alone, and Nmap's
+            # default group of 64 hosts overruns HOST_TIMEOUT. Probe live hosts in small groups.
+            command += ["-sT", DISCOVERY_PROBES, "--open", "--max-hostgroup", str(PORT_HOSTGROUP),
+                        "-p", ",".join(map(str, PORTS))]
         return command + [target]
 
     def run(self, job_id, network):

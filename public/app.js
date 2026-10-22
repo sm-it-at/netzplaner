@@ -69,7 +69,8 @@ function render() {
   const visible = filteredDevices();
   if (!state.devices.some((d) => d.id === selectedDeviceId) || (visible.length && !visible.some((d) => d.id === selectedDeviceId))) selectedDeviceId = visible[0]?.id || null;
   renderSummary(); renderTopology(); renderDeviceList(); renderPorts(); renderConnections(); renderOccupancy();
-  $("#storage-status").textContent = storageMessage;
+  const statusDot = document.createElement("span"); statusDot.className = "status-dot";
+  $("#storage-status").replaceChildren(statusDot, storageMessage);
   $("#storage-status").classList.toggle("storage-warning", storageBlocked || storageMessage.includes("fehlgeschlagen"));
   if (recoveryData && storageBlocked) {
     const recovery = document.createElement("button");

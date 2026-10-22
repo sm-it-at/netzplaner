@@ -2,7 +2,7 @@ name: netzplaner
 
 services:
   netzplaner:
-    image: netzplaner:1.2.0
+    image: netzplaner:1.2.1
     build:
       context: .
     restart: unless-stopped
@@ -30,7 +30,7 @@ services:
 
   scanner:
     profiles: [scan]
-    image: netzplaner-scanner:1.2.0
+    image: netzplaner-scanner:1.2.1
     build:
       context: ./scanner
     restart: unless-stopped

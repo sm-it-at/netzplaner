@@ -6,7 +6,13 @@ export const DEVICE_TYPES = [
   ["client", "Client / IoT"]
 ];
 
-export const uid = (prefix = "id") => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+let uidCounter = 0;
+// The counter keeps IDs unique within one page; random bytes separate tabs. Unlike
+// crypto.randomUUID, getRandomValues also exists when the app is opened over plain HTTP.
+const randomHex = () => globalThis.crypto?.getRandomValues
+  ? Array.from(globalThis.crypto.getRandomValues(new Uint8Array(6)), (byte) => byte.toString(16).padStart(2, "0")).join("")
+  : Math.random().toString(16).slice(2, 14);
+export const uid = (prefix = "id") => `${prefix}-${Date.now().toString(36)}-${(uidCounter++).toString(36)}-${randomHex()}`;
 
 export const STATE_LIMITS = Object.freeze({ devices: 500, portsPerDevice: 256, totalPorts: 10000, connections: 10000 });
 
