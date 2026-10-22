@@ -1,6 +1,30 @@
 # Prüfstand vom 22.10.2026
 
-## Aktueller Quellstand: Version 1.1.0
+## Aktueller Quellstand: Version 1.2.0
+
+Die Version ergänzt einen optionalen Nmap-Dienst sowie Auswahl und Import von
+Scanergebnissen. Der Standardbetrieb ohne Compose-Profil `scan` stellt weiterhin
+die statische App mit Nginx bereit.
+
+- 50 JavaScript-Tests prüfen Modell und Oberfläche mit jsdom, einschließlich
+  Nmap-XML-Import, Auswahl, vorhandener IPs, Übernahme in den Plan und Rückgängig/
+  Wiederholen. Scanner-Anfragen werden simuliert; getestet sind Abschluss,
+  Fehler, Tokenverlust, Abbruch und das Ende der Statusabfragen.
+- 22 Python-Tests prüfen Freigaben, feste Nmap-Argumente, Token-Anmeldung,
+  HTTP-Anfragen, XML-Verarbeitung, Begrenzungen, Zeitüberschreitung und Abbruch.
+  Nmap-Prozesse und HTTP-Verbindungen werden für diese Tests im Speicher simuliert.
+- Die vier JavaScript-Laufzeitdateien und `scanner/server.py` bestehen die
+  Syntaxprüfung. Compose akzeptiert sowohl den Standardbetrieb als auch das Profil `scan`.
+- Die lokal vorhandene Nmap-Version 7.98 wurde ausschließlich mit `--version`
+  abgefragt. Es wurden keine Geräte oder Netze gescannt.
+
+Ein tatsächlicher Nmap-Scan, ein Container-Build/-Start und eine visuelle Prüfung
+im echten Browser sind weiterhin offen. Die lokale Docker-Engine ist nicht
+verfügbar; lokale HTTP-/Browserprüfungen sind durch die Ausführungsumgebung
+eingeschränkt. Die automatisierten Prüfungen bestätigen keine Erreichbarkeit
+eines Netzes und ersetzen keinen Container- oder Browsertest auf dem Zielhost.
+
+## Historischer Prüfstand: Version 1.1.0
 
 Die Version erweitert die ursprüngliche App. Frühere Aussagen über bytegleiche
 Laufzeitdateien oder das Image der Version 1.0.0 gelten ausschließlich für den
@@ -38,12 +62,17 @@ npm ci
 npm test
 node --check public/app.js
 node --check public/model.js
+node --check public/scan.js
+node --check public/scan-model.js
+python -m unittest discover -s test -p "*_test.py"
 docker compose config --quiet
+docker compose --profile scan config --quiet
 ```
 
 Die jsdom-Abhängigkeit wird ausschließlich für Entwicklung und Tests benötigt.
-Der Docker-Container stellt die statischen App-Dateien mit Nginx bereit und
-benötigt kein Node.js, Python oder eine Datenbank.
+Der Nginx-Container stellt die statischen App-Dateien bereit und benötigt kein
+Node.js, Python oder eine Datenbank. Nur der optionale Scanner-Container benötigt
+Python und Nmap.
 
 ## Auf dem Docker-Zielhost prüfen
 
@@ -66,6 +95,28 @@ Bei einem abweichenden Host-Port die URL entsprechend ändern; unter Windows
 6. CSV und SVG exportieren und in einer passenden Anwendung öffnen.
 7. Auf einem schmalen Bildschirm sowie in der Druckvorschau alle Bedienelemente
    und Tabellen auf Lesbarkeit prüfen.
+8. Ohne Scanner-Profil im Bereich Netzwerkscan eine Verbindung versuchen: verständlicher Hinweis
+   auf den fehlenden Dienst; XML-Import und übrige App bleiben benutzbar.
+9. Eine selbst erzeugte Nmap-XML-Datei importieren, einzelne Funde auswählen und
+   übernehmen. Vorhandene IP-Adressen bleiben unverändert; TCP-Dienste erscheinen
+   als Notizen und erzeugen keine physischen Ports.
+
+Für die optionale Scanner-Prüfung `.env` gemäß README mit dem eigenen erlaubten
+privaten Zielnetz und einem Token konfigurieren, dann:
+
+```sh
+docker compose --profile scan up -d --build
+docker compose --profile scan ps
+docker compose --profile scan logs --tail 50 scanner
+```
+
+Im Browser Token, Zielnetz und Profil eingeben. Nur ein eigenes oder ausdrücklich
+freigegebenes Netz verwenden. Scanstart, Fortschritt, Abbruch, Ergebnisvorschau
+und selektive Übernahme prüfen. Außerdem verifizieren, dass falsche Tokens und
+Ziele außerhalb der Freigabe abgewiesen werden. Ein Scan darf höchstens 256
+Adressen umfassen und höchstens 180 Sekunden laufen. Token und Scanergebnisse
+dürfen nicht im Plan-Export oder Browser-Speicher landen; ausschließlich
+übernommene Geräte gehören zum gespeicherten Plan.
 
 Diese Schritte sind ausstehende Zielhost-Prüfungen, keine bereits bestätigten Ergebnisse.
 

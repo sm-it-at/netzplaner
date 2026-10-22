@@ -1,8 +1,8 @@
 # Netzplaner
 
 Interaktiver Netzwerkplaner für Homelab-Netze, als statische Website in Nginx.
-Version 1.1.0 erweitert Geräte, Ports und Verbindungen um Suche, Filter,
-Änderungsverlauf, Planungshinweise und zusätzliche Exporte.
+Version 1.2.0 ergänzt die Geräte-, Port- und Verbindungsplanung um einen optionalen
+Nmap-Netzwerkscan und den lokalen Import von Nmap-XML-Dateien.
 
 ## Funktionen
 
@@ -20,11 +20,15 @@ Version 1.1.0 erweitert Geräte, Ports und Verbindungen um Suche, Filter,
   auswählen; die Bedienung ist für schmale Bildschirme angepasst.
 - Mehrfach belegte Ports, ungültige und doppelte IPv4-/IPv6-Adressen erkennen.
   Unterschiedliche VLANs zweier Access-Ports und abweichende Portgeschwindigkeiten
-  liefern Planungshinweise. Die App fragt keine Geräte im Netz ab und prüft weder
-  tatsächliche Erreichbarkeit noch die ausgehandelte Verbindung.
+  liefern Planungshinweise. Diese Hinweise beruhen auf den Angaben im Plan;
+  tatsächliche Verkabelung und ausgehandelte Verbindungen werden nicht geprüft.
 - Den gesamten Plan als JSON sichern und vorhandene Pläne mit Prüfung und
   Bestätigung importieren. Geräteinventar und Belegungszahlen als CSV exportieren,
   die Topologie als eigenständige SVG-Datei speichern oder die Ansicht drucken.
+- Mit einem optionalen Nmap-Dienst erreichbare Geräte und häufige TCP-Dienste
+  in ausdrücklich freigegebenen privaten IPv4-Netzen finden. Ausgewählte Funde
+  lassen sich als neue Geräte übernehmen; vorhandene IP-Adressen bleiben erhalten.
+  Alternativ Nmap-XML-Dateien lokal im Browser einlesen.
 
 CSV-Dateien enthalten das gesamte Geräteinventar unabhängig vom Suchfilter und
 verwenden Semikolon-Trennzeichen sowie einen UTF-8-BOM. Textzellen werden geschützt,
@@ -47,10 +51,11 @@ docker compose ps
 Danach auf dem Docker-Host öffnen: **http://localhost:8080**.
 Beim ersten Build lädt Docker das offizielle Nginx-Basisimage herunter.
 Es ist über Version und Prüfsumme festgelegt und unterstützt Linux amd64 / x86-64
-und ARM64. Node.js, Python und eine Datenbank sind für den Container nicht erforderlich.
-Die App selbst arbeitet ohne externe Dienste.
+und ARM64. Für die statische App werden weder Node.js noch Python oder eine
+Datenbank benötigt. Der optionale Scanner läuft als eigener Container mit Python
+und Nmap; ohne das Profil `scan` wird dieser Dienst nicht gestartet.
 
-Ein vorgefertigtes Image-Archiv für Version 1.1.0 ist nicht Teil dieses Repositories.
+Ein vorgefertigtes Image-Archiv für Version 1.2.0 ist nicht Teil dieses Repositories.
 Der Schnellstart baut das Image aus dem aktuellen Quellcode. Die früheren Nachweise
 zu einem separat erstellten Image der Version 1.0.0 stehen in [PRUEFUNG.md](PRUEFUNG.md).
 
@@ -68,6 +73,93 @@ Danach `docker compose up -d` ausführen und `http://IP-DES-DOCKER-HOSTS:8080` �
 Alternativ lässt sich statt `0.0.0.0` die konkrete LAN-IP des Hosts eintragen.
 Die Docker-Version besitzt keinen ChatGPT-Login. Für Zugriff aus dem Internet
 eine eigene Anmeldung am Reverse Proxy verwenden. Der Container spricht intern HTTP auf Port 8080.
+
+## Optionalen Netzwerkscan aktivieren
+
+Scans nur für eigene oder ausdrücklich freigegebene Netze verwenden. In `.env`
+die tatsächlich erlaubten IPv4-Netze und ein zufälliges Token mit mindestens
+24 Zeichen eintragen. Der Scanner bleibt ohne gültige Freigabe und Token deaktiviert.
+Ein solches Token lässt sich zum Beispiel mit einem lokal installierten Python
+erzeugen:
+
+```sh
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Das Zielnetz anpassen und die erzeugte Zeichenfolge hinter `SCAN_TOKEN=` eintragen:
+
+```dotenv
+SCAN_ALLOWED_CIDRS=192.168.1.0/24
+SCAN_TOKEN=
+```
+
+`SCAN_ALLOWED_CIDRS` ist eine kommagetrennte Liste privater RFC1918-Netze
+(`10.0.0.0/8`, `172.16.0.0/12` oder `192.168.0.0/16` beziehungsweise deren Teilnetze).
+Ein einzelner Scan darf höchstens 256 IPv4-Adressen umfassen und muss vollständig
+innerhalb dieser Freigabe liegen. Öffentliche Adressen und beliebige Nmap-Argumente
+werden nicht akzeptiert.
+
+```sh
+docker compose --profile scan up -d --build
+```
+
+In der App den Bereich **Netzwerkscan** öffnen, das Token eingeben und
+**Scanner verbinden** wählen. Danach Zielnetz und Scanprofil wählen und den
+Scan starten. Das Token bleibt nur während der laufenden Seite
+im Arbeitsspeicher; es wird weder im Plan noch im Browser-Speicher abgelegt.
+Es wird zur Anmeldung am Scanner über dieselbe App-Adresse übertragen. Für
+Zugriff über nicht vertrauenswürdige Netze HTTPS am Reverse Proxy verwenden.
+
+Die Profile haben unterschiedliche Aussagekraft:
+
+- **Geräte suchen:** Nmap prüft mit unprivilegierten TCP-Probes auf die Ports
+  22, 80, 443, 445, 3389 und 8080, ob ein Gerät antwortet. Auch eine Antwort
+  „Port geschlossen“ kann ein erreichbares Gerät bestätigen. Geräte, die alle
+  Probes filtern, können fehlen.
+- **Häufige TCP-Ports:** Ein TCP-Connect-Scan prüft eine feste Auswahl häufiger Ports.
+  Er meldet offene Ports; Geräte ohne offenen Port dieser Auswahl können fehlen.
+  Die angezeigten Dienstnamen stammen aus der Nmap-Porttabelle und sind Hinweise,
+  keine bestätigte Software- oder Versionserkennung.
+
+Ein Scan läuft höchstens 180 Sekunden und kann abgebrochen werden. Der Dienst
+behält höchstens acht Aufträge im Arbeitsspeicher; Ergebnisse sind bis zu
+15 Minuten ab Scanstart abrufbar. Abgelaufene Einträge werden bei weiteren
+Anfragen entfernt.
+Ergebnisse werden erst nach Auswahl und ausdrücklicher Übernahme in den Plan
+eingefügt. Bereits vorhandene Geräte mit derselben IP-Adresse werden nicht
+überschrieben. TCP-Dienste werden als Notizen am Gerät dokumentiert; sie sind
+keine physischen Netzwerkports im Plan.
+
+Der Scanner besitzt keinen veröffentlichten Host-Port. Nginx vermittelt die
+Anfragen intern an Port 8090. Beide Container laufen ohne zusätzliche Linux-
+Capabilities; der Scanner verwendet Benutzer `101:101` und ein schreibgeschütztes
+Dateisystem. Ein Host-Netzwerk ist für diese TCP-Scans nicht erforderlich.
+Erreichbar sind nur Netze, zu denen der Docker-Container tatsächlich eine Route
+hat und deren Firewalls die Anfragen zulassen. VLANs werden nicht automatisch
+überschritten. MAC-Adressen, Betriebssysteme, Switch-Ports und Verkabelung lassen
+sich daraus nicht zuverlässig ableiten.
+
+Die gehostete Sites-Version hat keinen Zugriff auf diesen Docker-Dienst und
+kann deshalb keine direkten LAN-Scans starten. Der XML-Import funktioniert auch
+ohne Scanner.
+
+### Vorhandene Nmap-Ergebnisse importieren
+
+Im Bereich **Netzwerkscan** eine Nmap-XML-Datei auswählen und die gewünschten
+Funde übernehmen. Die Datei wird lokal im Browser verarbeitet und nicht an den
+Scanner hochgeladen. Ein vorhandener Plan bleibt erhalten; nur ausgewählte neue
+IP-Adressen werden ergänzt.
+
+Wer Nmap bereits auf einem Rechner im Zielnetz installiert hat, kann dort
+beispielsweise eine Datei erzeugen:
+
+```sh
+nmap --unprivileged -n -sn -PS22,80,443,445,3389,8080 -oX netz.xml 192.168.1.0/24
+```
+
+Dies ist ein Beispiel für ein eigenes freigegebenes Netz. Der Befehl muss auf
+dem betreffenden Rechner ausgeführt werden; die App führt ihn beim XML-Import
+nicht aus.
 
 ## Vorhandene Pläne übernehmen und sichern
 
@@ -87,10 +179,11 @@ Plan importieren. Ein ausdrücklich bestätigter Import, leerer Plan oder Beispi
 kann den gespeicherten Plan ersetzen. Die sichtbare Speicheranzeige meldet auch
 fehlgeschlagene Schreibvorgänge; dann den aktuellen Plan per JSON sichern.
 
-Die Daten liegen ausschließlich im Browser (`localStorage`, Schlüssel `netzplaner-v1`).
+Die Netzpläne liegen ausschließlich im Browser (`localStorage`, Schlüssel `netzplaner-v1`).
 Eine andere Domain, ein anderer Port, HTTP/HTTPS oder ein anderes Browserprofil
 verwendet einen eigenen Speicher. Es gibt keine Synchronisation zwischen Browsern
-oder Geräten und kein Backend für Netzpläne.
+oder Geräten und kein Backend für Netzpläne. Nur bei aktivem Scanner verarbeitet
+der optionale Dienst Scanaufträge und vorübergehende Ergebnisse im Arbeitsspeicher.
 Containerneustarts löschen die Browserdaten nicht; ein Docker-Volume ist deshalb nicht erforderlich.
 Das Image enthält nur den App-Code und Beispieldaten, keine persönlichen Netzpläne.
 Das Löschen der Browserdaten entfernt auch lokal gespeicherte Pläne.
@@ -116,7 +209,7 @@ und einem temporären Verzeichnis unter `/tmp`. Compose prüft die Erreichbarkei
 
 Quelle: Netzplaner, Sites-Version 1, Projekt `appgprj_6aacd418d2e4819196af072953d42453`,
 Quellstand `fcea38ae38a80793ff165b4372f9fa9b3dc7c41d`.
-Diese ursprüngliche Version bildet die Grundlage der Docker-App; Version 1.1.0
+Diese ursprüngliche Version bildet die Grundlage der Docker-App; Version 1.2.0
 entwickelt die Laufzeitdateien und Tests weiter.
 
 Für Entwicklung und Tests werden Node.js 26 oder eine von jsdom unterstützte
@@ -125,10 +218,13 @@ Version ab Node.js 22.22.2 (22.x) beziehungsweise 24.15.0 (24.x) sowie npm benö
 ```sh
 npm ci
 npm test
+python -m unittest discover -s test -p "*_test.py"
 ```
 
 Die Testsuite umfasst Modelltests und DOM-Integrationstests mit jsdom.
 Diese Entwicklungsabhängigkeiten werden für den Nginx-Container nicht benötigt.
+Die Python-Prüfungen testen den Scanner mit simulierten Nmap-Prozessen und lösen
+keine Netzwerkscans aus.
 Prüfergebnisse, historische Nachweise und offene Laufzeitprüfungen stehen in
 [PRUEFUNG.md](PRUEFUNG.md).
 

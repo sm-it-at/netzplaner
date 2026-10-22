@@ -17,6 +17,7 @@
       <a href="#plan">Plan</a>
       <a href="#inventar">Inventar</a>
       <a href="#verbindungen">Verbindungen</a>
+      <a href="#netzwerkscan">Netzwerkscan</a>
       <a href="#belegung">Belegung</a>
     </nav>
     <div class="header-actions">
@@ -118,6 +119,41 @@
       <div class="panel connections-panel">
         <div class="panel-toolbar compact"><h3>Verbindungsübersicht</h3><label class="connection-search" for="connections-search">Verbindungen suchen<input id="connections-search" type="search" placeholder="Gerät, Port oder Bezeichnung" autocomplete="off" /></label></div>
         <div class="table-wrap" id="connections-list"></div>
+      </div>
+    </section>
+
+    <section class="scanner-section" id="netzwerkscan" aria-labelledby="scan-heading">
+      <div class="section-title-row">
+        <div><p class="eyebrow">NMAP & GERÄTESUCHE</p><h2 id="scan-heading">Dein Netz entdecken</h2></div>
+        <span class="scan-badge">Vorschau vor Übernahme</span>
+      </div>
+      <div class="panel scan-panel">
+        <div class="scan-intro"><p>Geräte im eigenen oder freigegebenen Netz finden und gezielt in den Plan übernehmen. Gescannt werden IPs und TCP-Dienste; Verkabelung und physische Ports bleiben manuell.</p></div>
+        <div class="scan-methods">
+          <div class="scan-method">
+            <h3>Direkt im Heimnetz scannen</h3>
+            <p>Benötigt den aktivierten Scanner im lokalen Docker-Betrieb. Der Scan läuft aus Sicht des Containers. Der Token bleibt nur in dieser geöffneten Sitzung.</p>
+            <div class="scan-auth"><label for="scan-token">Scanner-Token<input id="scan-token" type="password" autocomplete="off" spellcheck="false" maxlength="512" placeholder="Mindestens 24 Zeichen" /></label><button id="scan-connect" class="btn btn-secondary" type="button">Scanner verbinden</button></div>
+            <p id="scan-connection" class="scan-help">Noch nicht verbunden. Es wird kein Scan automatisch gestartet.</p>
+            <form id="scan-form">
+              <div class="scan-fields"><label for="scan-target">IPv4-Adresse oder Netz<input id="scan-target" type="text" maxlength="32" placeholder="192.168.1.0/24" autocomplete="off" disabled required /></label><label for="scan-profile">Scan-Profil<select id="scan-profile" disabled><option value="discovery">Geräte suchen</option><option value="ports">Häufige TCP-Ports</option></select></label></div>
+              <p id="scan-networks" class="scan-help">Nur freigegebene Netze, höchstens 256 Adressen je Scan.</p>
+              <div class="scan-actions"><button id="scan-start" class="btn btn-primary" type="submit" disabled>Scan starten</button><button id="scan-cancel" class="btn btn-ghost" type="button" disabled>Scan abbrechen</button></div>
+            </form>
+          </div>
+          <div class="scan-method scan-xml-method">
+            <h3>Nmap-XML lokal importieren</h3>
+            <p>Funktioniert auch ohne Scanner und auf der gehosteten Website. Eine mit <code>nmap -oX</code> erzeugte Datei bleibt zum Einlesen im Browser. Importiert werden aktive IPv4-Geräte und offene TCP-Dienste.</p>
+            <label class="btn btn-ghost scan-file-label" for="scan-xml-input">XML-Datei auswählen<input id="scan-xml-input" type="file" accept=".xml,application/xml,text/xml" /></label>
+            <p class="scan-help">Maximal 2 MB und 256 Geräte. IPv6 wird derzeit nicht übernommen.</p>
+          </div>
+        </div>
+        <p id="scan-status" class="scan-status" role="status" aria-live="polite">Bereit für einen Scan oder eine XML-Datei.</p>
+        <div id="scan-results" hidden>
+          <div class="panel-toolbar compact"><h3 id="scan-results-heading">Ergebnisvorschau</h3><span id="scan-result-count" class="scan-help"></span></div>
+          <div class="table-wrap"><table class="scan-table" aria-labelledby="scan-results-heading"><thead><tr><th><input id="scan-select-all" type="checkbox" aria-label="Alle neuen Geräte auswählen" /></th><th>IPv4-Adresse</th><th>Name</th><th>Gerätetyp</th><th>Beobachtete TCP-Dienste</th><th>Status</th></tr></thead><tbody id="scan-results-body"></tbody></table></div>
+          <div class="scan-import-actions"><span id="scan-selection-count" class="scan-help"></span><button id="scan-import-selected" class="btn btn-primary" type="button" disabled>Ausgewählte übernehmen</button></div>
+        </div>
       </div>
     </section>
 
