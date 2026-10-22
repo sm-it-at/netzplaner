@@ -1,49 +1,112 @@
 # Prüfstand vom 22.10.2026
 
-- Die vier Laufzeitdateien stimmen bytegenau mit dem aus der ursprünglichen Erstellung wiederhergestellten Netzplaner-Code überein.
-- Sites-Version 1 verweist auf denselben abschließenden Quellstand `fcea38ae38a80793ff165b4372f9fa9b3dc7c41d`.
-- Alle fünf bestehenden Modelltests bestehen: Belegung, belegte Ports ablehnen, Mehrfachbelegung erkennen, Port samt Verbindung entfernen, Gerät samt Verbindungen entfernen.
-- Beide JavaScript-Dateien bestehen die Syntaxprüfung.
-- `docker compose config` akzeptiert die Konfiguration. Standardbindung `127.0.0.1:8080` und eine abweichende Host-IP/Port-Kombination wurden geprüft.
-- Das festgelegte offizielle Nginx-Basisimage ist in der Registry vorhanden; der Manifest-Digest und Linux-amd64-/ARM64-Unterstützung wurden bestätigt.
+## Aktueller Quellstand: Version 1.1.0
 
-## Erneute Prüfung der Repository-Dateien vom 22.10.2026
+Die Version erweitert die ursprüngliche App. Frühere Aussagen über bytegleiche
+Laufzeitdateien oder das Image der Version 1.0.0 gelten ausschließlich für den
+historischen Stand weiter unten.
 
-- Alle fünf Modelltests bestehen erneut mit `node --test test/model.test.js`.
-- `public/app.js` und `public/model.js` bestehen erneut `node --check`.
-- `docker compose config --quiet` akzeptiert die Repository-Konfiguration.
-- Dockerfile, Compose-Konfiguration, Nginx-Konfiguration, App-Dateien und Tests stimmen mit dem zuvor erstellten Docker-Quellpaket überein.
+- Alle 20 Modelltests bestehen. Geprüft werden unter anderem Portbelegung,
+  Verbindungsvalidierung, Löschvorgänge, Import-Normalisierung, Gerätekopien,
+  IPv4-/IPv6- und Profilhinweise, CSV-Ausgabe sowie der Änderungsverlauf.
+- Insgesamt bestehen 32 Tests: 20 Modelltests und 12 weitere Prüfungen der
+  Anwendung mit jsdom und des JSON-Roundtrips. Abgedeckt sind Geräteverwaltung,
+  Rückgängig/Wiederholen, Filter, Verbindungsbearbeitung, Dialoge, Speicherfehler,
+  Importschutz und tatsächlicher Dateiimport einschließlich Abbruch und Fehlerfällen.
+  Der SVG-Download lässt sich als XML mit allen Geräten und Verbindungen parsen;
+  Druckereignisse stellen die Filter nach der Ausgabe wieder her.
+- Die Tests wurden mit Node.js 26.8.1 ausgeführt.
+- `public/app.js` und `public/model.js` bestehen die JavaScript-Syntaxprüfung.
+- `docker compose config` akzeptiert die aktuelle Konfiguration.
+- Die lokale Docker-Engine ist nicht erreichbar. Ein Build und ein Start des
+  aktuellen Containers sowie eine HTTP-/Healthcheck-Prüfung sind damit noch offen.
+- Lokale Node.js- und Python-Webserver konnten gestartet werden; Zugriffe über
+  Loopback liefen in dieser Ausführungsumgebung in einen Timeout. Ein visueller
+  Funktionstest im echten Browser konnte deshalb nicht abgeschlossen werden.
 
-## Separat erstelltes Image-Archiv
+DOM-Tests prüfen die Anwendung in einer simulierten Dokumentumgebung. Sie ersetzen
+keine visuelle Prüfung von Topologie, mobiler Darstellung, Dialogen, SVG-Dateien
+oder Drucklayout im echten Browser. Für den aktuellen Stand liegen keine
+bestätigten Browser-Screenshots oder Container-Laufzeitnachweise vor.
 
-Die folgenden Prüfungen beziehen sich auf das ursprüngliche lokale Linux-amd64-Archiv.
-Das Archiv ist nicht Bestandteil dieses Git-Repositories und wurde nicht als GitHub-Release hochgeladen.
+## Tests erneut ausführen
 
-- Das fertige Image `netzplaner:1.0.0` für Linux amd64 wurde mit dem offiziellen Werkzeug `crane` v0.22.1 lokal erstellt. Dessen Download wurde anhand der veröffentlichten SHA256-Prüfsumme verifiziert; es erfolgte kein Registry-Push.
-- Die Image-Struktur besteht `crane validate --tarball`. Zusätzlich wurden sämtliche neun Layer gegen die unkomprimierten SHA256-Digests geprüft. Die App-Dateien und Nginx-Konfiguration im letzten Layer stimmen bytegenau mit dem Quellpaket überein und sind für Benutzer 101 lesbar.
-- Image-Konfiguration bestätigt: Benutzer `101:101`, Entrypoint `nginx`, Argumente `-g`, `daemon off;`, freigegebener Port `8080/tcp`.
-- Image-ID: `sha256:1518b8994176b8029785d85c15816e77384b203a4fe628d3ce2cdc1e4f7db798`.
-
-## Grenzen der Ausführungsprüfung
-
-Die lokale Docker-Engine war bei der Erstellung nicht erreichbar. Daher konnten
-`docker load`, `docker build`, `nginx -t` im Container sowie ein tatsächlicher Containerstart
-mit HTTP-/Healthcheck-Prüfung hier nicht ausgeführt werden.
-
-Ein zusätzlicher lokaler Webserver konnte zwar gestartet werden, war in dieser
-Ausführungsumgebung über Loopback nicht erreichbar. Ein Browser-Funktionstest des
-exportierten Pakets konnte deshalb ebenfalls nicht abgeschlossen werden.
-
-Auf dem Zielhost nach dem Start prüfen:
+Mit Node.js und npm im Repository:
 
 ```sh
+npm ci
+npm test
+node --check public/app.js
+node --check public/model.js
+docker compose config --quiet
+```
+
+Die jsdom-Abhängigkeit wird ausschließlich für Entwicklung und Tests benötigt.
+Der Docker-Container stellt die statischen App-Dateien mit Nginx bereit und
+benötigt kein Node.js, Python oder eine Datenbank.
+
+## Auf dem Docker-Zielhost prüfen
+
+```sh
+docker compose up -d --build
 docker compose exec netzplaner nginx -t
 docker compose ps
 docker compose logs --tail 50 netzplaner
 curl -fsS http://localhost:8080/healthz
 ```
 
-Bei einem anderen Port `8080` entsprechend ersetzen. Im Browser müssen die drei
-Beispielgeräte und 14 Ports erscheinen; anschließend einen JSON-Export und -Import prüfen.
+Bei einem abweichenden Host-Port die URL entsprechend ändern; unter Windows
+`curl.exe` verwenden. Anschließend im Browser prüfen:
 
-Referenz zur Image-Erstellung: [crane mutate](https://github.com/google/go-containerregistry/blob/main/cmd/crane/doc/crane_mutate.md).
+1. Die drei Beispielgeräte und insgesamt 14 Ports erscheinen.
+2. Geräte suchen und Typ-/Portfilter wechseln; Verbindungen bearbeiten.
+3. Ein Gerät duplizieren: neue IDs, freie Ports und leere IP-Adresse prüfen.
+4. Eine Änderung rückgängig machen, wiederholen und den Plan neu laden.
+5. JSON sichern, nach bestätigtem Import vergleichen und fehlerhafte Importdaten prüfen.
+6. CSV und SVG exportieren und in einer passenden Anwendung öffnen.
+7. Auf einem schmalen Bildschirm sowie in der Druckvorschau alle Bedienelemente
+   und Tabellen auf Lesbarkeit prüfen.
+
+Diese Schritte sind ausstehende Zielhost-Prüfungen, keine bereits bestätigten Ergebnisse.
+
+## Historische Nachweise: Version 1.0.0
+
+Die folgenden Belege stammen vom ursprünglichen Docker-Quellpaket und dessen
+damaliger Repository-Prüfung am 22.10.2026:
+
+- Die vier damaligen Laufzeitdateien stimmten bytegenau mit dem aus der
+  ursprünglichen Erstellung wiederhergestellten Netzplaner-Code überein.
+- Sites-Version 1 verwies auf den abschließenden Quellstand
+  `fcea38ae38a80793ff165b4372f9fa9b3dc7c41d`.
+- Alle fünf damaligen Modelltests bestanden: Belegung, belegte Ports ablehnen,
+  Mehrfachbelegung erkennen, Port samt Verbindung entfernen und Gerät samt
+  Verbindungen entfernen. Beide JavaScript-Dateien bestanden die Syntaxprüfung.
+- Compose akzeptierte die damalige Konfiguration mit Standardbindung
+  `127.0.0.1:8080` sowie einer abweichenden Host-IP-/Port-Kombination.
+- Dockerfile, Compose- und Nginx-Konfiguration, App-Dateien und Tests stimmten
+  mit dem damaligen Docker-Quellpaket überein.
+- Das festgelegte offizielle Nginx-Basisimage war in der Registry vorhanden;
+  Manifest-Digest und Linux-amd64-/ARM64-Unterstützung wurden bestätigt.
+
+### Separates Image-Archiv der Version 1.0.0
+
+Das historische Linux-amd64-Archiv ist nicht Bestandteil dieses Repositories und
+wurde nicht als GitHub-Release hochgeladen. Es enthält keine Änderungen der Version 1.1.0.
+
+- `netzplaner:1.0.0` wurde lokal mit `crane` v0.22.1 erstellt. Der Werkzeug-Download
+  wurde anhand der veröffentlichten SHA256-Prüfsumme verifiziert; es erfolgte kein Registry-Push.
+- Die Image-Struktur bestand `crane validate --tarball`. Sämtliche neun Layer
+  wurden gegen ihre unkomprimierten SHA256-Digests geprüft. App-Dateien und
+  Nginx-Konfiguration im letzten Layer stimmten bytegenau mit dem damaligen
+  Quellpaket überein und waren für Benutzer 101 lesbar.
+- Image-Konfiguration: Benutzer `101:101`, Entrypoint `nginx`, Argumente
+  `-g`, `daemon off;`, freigegebener Port `8080/tcp`.
+- Image-ID: `sha256:1518b8994176b8029785d85c15816e77384b203a4fe628d3ce2cdc1e4f7db798`.
+- Auch damals war die lokale Docker-Engine nicht erreichbar. `docker load`,
+  `docker build`, `nginx -t` im Container und ein tatsächlicher Containerstart
+  mit HTTP-/Healthcheck-Prüfung wurden nicht ausgeführt. Ein zusätzlicher
+  lokaler Webserver war über Loopback nicht erreichbar; ein Browser-Funktionstest
+  konnte nicht abgeschlossen werden.
+
+Referenz zur historischen Image-Erstellung:
+[crane mutate](https://github.com/google/go-containerregistry/blob/main/cmd/crane/doc/crane_mutate.md).

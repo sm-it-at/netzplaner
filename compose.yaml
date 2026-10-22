@@ -2,7 +2,7 @@ name: netzplaner
 
 services:
   netzplaner:
-    image: netzplaner:1.0.0
+    image: netzplaner:1.1.0
     build:
       context: .
     restart: unless-stopped
