@@ -3,6 +3,8 @@ import {
   getConflicts, getSummary, removeDevice, removePort, uid, validateConnection,
   normalizeState, duplicateDevice, getNetworkIssues, devicesToCsv, createHistory
 } from "./model.js";
+import { initScanner } from "./scan.js";
+import { mergeScanHosts } from "./scan-model.js";
 
 const STORAGE_KEY = "netzplaner-v1";
 const colors = { router: "#b7d93d", switch: "#21a19a", ap: "#4285f4", server: "#9b6ce0", client: "#f0a629" };
@@ -14,6 +16,7 @@ const escapeHtml = (value = "") => String(value).replace(/[&<>'"]/g, (char) => (
 let storageMessage = "Privat · lokal gespeichert";
 let storageBlocked = false;
 let recoveryData = null;
+let scannerUI = null;
 let state = loadState();
 const history = createHistory(state);
 let selectedDeviceId = state.devices[0]?.id || null;
@@ -75,6 +78,7 @@ function render() {
   }
   $$('[data-action="undo"]').forEach((b) => b.disabled = !history.canUndo);
   $$('[data-action="redo"]').forEach((b) => b.disabled = !history.canRedo);
+  scannerUI?.refresh();
 }
 
 function renderSummary() {
@@ -402,3 +406,17 @@ window.addEventListener("afterprint", () => {
   printFilters = null; render();
 });
 render();
+scannerUI = initScanner({
+  getState: () => state,
+  onImport: (hosts) => {
+    const result = mergeScanHosts(state, hosts);
+    if (result.added) {
+      state = result.state;
+      selectedDeviceId = state.devices.at(-1)?.id || null;
+      clearDeviceFilters();
+      persist();
+      toast(`${result.added} Geräte übernommen. Rückgängig ist möglich.`);
+    }
+    return { added: result.added, skipped: result.skipped };
+  }
+});

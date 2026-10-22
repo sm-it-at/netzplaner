@@ -39,6 +39,7 @@ async function openApp(t, { raw = JSON.stringify(demoState()), failSave = false,
       fileReads.push(new Promise((resolve) => this.addEventListener("loadend", resolve, { once: true })));
     }
   };
+  window.FileReader = ObservedFileReader;
 
   const bindings = {
     window, document: window.document, localStorage: window.localStorage,
@@ -81,9 +82,9 @@ async function openApp(t, { raw = JSON.stringify(demoState()), failSave = false,
       element.dispatchEvent(new window.Event(event, { bubbles: true }));
     },
     submit(selector) { $(selector).requestSubmit($(selector).querySelector('[type="submit"]')); },
-    async importFile(content, name = "plan.json") {
-      const input = $("#import-input");
-      Object.defineProperty(input, "files", { configurable: true, value: [new window.File([content], name, { type: "application/json" })] });
+    async importFile(content, name = "plan.json", selector = "#import-input") {
+      const input = $(selector);
+      Object.defineProperty(input, "files", { configurable: true, value: [new window.File([content], name, { type: name.endsWith(".xml") ? "application/xml" : "application/json" })] });
       input.dispatchEvent(new window.Event("change", { bubbles: true }));
       await fileReads.at(-1);
       return input;
@@ -92,6 +93,30 @@ async function openApp(t, { raw = JSON.stringify(demoState()), failSave = false,
     rows(selector) { return [...window.document.querySelectorAll(selector)]; }
   };
 }
+
+test("app Nmap selection merges into the plan and undo/redo refreshes existing IP markers", async (t) => {
+  const app = await openApp(t);
+  const original = normalizeState(app.saved()).state;
+  const xml = '<nmaprun><host><status state="up"/><address addr="10.20.0.1" addrtype="ipv4"/><hostnames><hostname name="Do not overwrite"/></hostnames></host><host><status state="up"/><address addr="192.168.1.11" addrtype="ipv4"/><hostnames><hostname name="Lab Node"/></hostnames><ports><port protocol="tcp" portid="8006"><state state="open"/><service name="https"/></port></ports></host></nmaprun>';
+  await app.importFile(xml, "nmap.xml", "#scan-xml-input");
+  const row = app.rows("#scan-results-body tr").find((tr) => tr.children[1].textContent === "192.168.1.11");
+  assert.ok(row);
+  app.click("#scan-import-selected");
+  const saved = app.saved();
+  assert.equal(saved.devices.length, 4);
+  assert.deepEqual(saved.devices.slice(0, 3), original.devices);
+  assert.deepEqual(saved.connections, original.connections);
+  assert.equal(saved.devices.at(-1).name, "Lab Node");
+  assert.deepEqual(saved.devices.at(-1).ports, []);
+  assert.match(saved.devices.at(-1).notes, /8006\/tcp/);
+  assert.equal(row.querySelector('input[type="checkbox"]').disabled, true);
+  app.click('[data-action="undo"]');
+  assert.deepEqual(app.saved(), original);
+  assert.equal(row.querySelector('input[type="checkbox"]').disabled, false);
+  app.click('[data-action="redo"]');
+  assert.equal(app.saved().devices.length, 4);
+  assert.equal(row.querySelector('input[type="checkbox"]').disabled, true);
+});
 
 test("app device CRUD updates storage and supports undo/redo including related links", async (t) => {
   const app = await openApp(t);

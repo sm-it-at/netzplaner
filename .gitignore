@@ -5,6 +5,8 @@
 
 # Abhängigkeiten und Testausgaben
 node_modules/
+__pycache__/
+*.pyc
 coverage/
 .nyc_output/
 

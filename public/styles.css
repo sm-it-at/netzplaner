@@ -234,12 +234,55 @@ input:focus, select:focus, textarea:focus { border-color: var(--green-dark); box
   .conflict-banner { align-items: start; flex-direction: column; gap: 8px; }
 }
 
+.scanner-section { background: #eef2f3; }
+.scanner-section .eyebrow { color: var(--green-dark); }
+.scan-panel { max-width: 1280px; margin: auto; }
+.scan-intro { padding: 20px 24px 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+.scan-badge { padding: 8px 12px; border-radius: 99px; color: #51670f; background: #e8efcd; font-size: 11px; font-weight: 750; white-space: nowrap; }
+.scan-methods { display: grid; grid-template-columns: 1.25fr 1fr; gap: 24px; padding: 6px 24px 22px; }
+.scan-method > p { margin: 11px 0 16px; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.scan-xml-method { padding: 20px; border: 1px solid var(--line); border-radius: 9px; background: #f8fafb; align-self: start; }
+.scan-auth, .scan-fields { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 12px; }
+.scan-auth button { margin-bottom: 12px; }
+.scan-auth input, .scan-fields input, .scan-fields select { margin-bottom: 0; }
+.scan-fields { grid-template-columns: 1.1fr 1fr; }
+.scan-help { margin: 10px 0 14px; color: var(--muted); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.scan-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.scan-file-label { display: inline-block; position: relative; margin: 0; overflow: hidden; }
+.scan-file-label input { position: absolute; inset: 0; opacity: 0; cursor: pointer; margin: 0; }
+.scan-file-label:focus-within { outline: 3px solid var(--green-dark); outline-offset: 3px; }
+.scan-status { margin: 0; padding: 15px 24px; border-top: 1px solid var(--line); background: #f5f8ec; color: #4d6210; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.scan-status.scan-error { color: #913b36; background: #fff2ef; }
+.scan-table { min-width: 850px; }
+.scan-table input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var(--green-dark); }
+.scan-table input[type="text"] { min-width: 140px; width: 180px; margin: 0; padding: 8px; font-size: 12px; }
+.scan-table select { min-width: 140px; margin: 0; padding: 8px; font-size: 12px; }
+.scan-services { min-width: 170px; max-width: 300px; white-space: normal; overflow-wrap: anywhere; line-height: 1.6; }
+.scan-row-status { color: var(--muted); font-size: 11px; }
+.scan-import-actions { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 24px; border-top: 1px solid var(--line); }
+.scan-import-actions .scan-help { margin: 0; }
+#scan-result-count { margin: 0; }
+@media (max-width: 1050px) {
+  .topbar nav { gap: 14px; }
+  .scan-methods { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .scan-methods { padding: 4px 16px 18px; gap: 20px; }
+  .scan-intro { padding: 18px 16px 0; }
+  .scan-auth, .scan-fields { grid-template-columns: 1fr; gap: 8px; }
+  .scan-auth button { justify-self: start; margin: 0; }
+  .scan-status, .scan-import-actions { padding: 14px 16px; }
+  .scan-import-actions { align-items: start; flex-direction: column; }
+  .scan-badge { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
 
 @media print {
+  .scanner-section { display: none !important; }
   @page { size: A4 landscape; margin: 12mm; }
   html, body, main { overflow: visible !important; background: white !important; color: #132033 !important; }
   body { font-size: 10pt; }
