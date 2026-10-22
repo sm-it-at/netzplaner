@@ -9,7 +9,7 @@ Voraussetzung: Git, Docker mit Linux-Containern und Docker Compose v2.
 Das Repository klonen und den Container bauen und starten:
 
 ```sh
-git clone https://github.com/kaarl92/netzplaner.git
+git clone https://github.com/sm-it-at/netzplaner.git
 cd netzplaner
 docker compose up -d --build
 docker compose ps
