@@ -1,0 +1,31 @@
+# Lokale Konfiguration
+.env
+.env.*
+!.env.example
+
+# Abhängigkeiten und Testausgaben
+node_modules/
+coverage/
+.nyc_output/
+
+# Container-Archive und Pakete
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+
+# Protokolle und temporäre Dateien
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.swp
+*.swo
+
+# Editor- und Betriebssystemdateien
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini

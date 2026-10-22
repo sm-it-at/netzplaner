@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#101b2b" />
+  <title>Netzplaner</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="Netzplaner Startseite">
+      <span class="brand-mark"><span></span><span></span><span></span></span>
+      <span>NETZ<span>PLANER</span></span>
+    </a>
+    <nav aria-label="Seitennavigation">
+      <a href="#plan">Plan</a>
+      <a href="#inventar">Inventar</a>
+      <a href="#belegung">Belegung</a>
+    </nav>
+    <div class="header-actions">
+      <span class="privacy-badge"><span class="status-dot"></span> Privat · lokal gespeichert</span>
+      <button class="btn btn-primary" data-action="add-device">+ Gerät</button>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="workspace-section" id="plan">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">NETZWERKÜBERSICHT</p>
+          <h1>Dein Netz. Klar verbunden.</h1>
+          <p class="lead">Geräte, Ports und Verbindungen an einem Ort – ohne Datenbank oder Cloud-Speicher.</p>
+        </div>
+        <div class="summary-strip" id="header-summary" aria-label="Netzwerk-Kennzahlen"></div>
+      </div>
+
+      <div class="topology-shell">
+        <div class="panel-toolbar">
+          <div>
+            <h2>Topologie</h2>
+            <p>Klicke ein Gerät an, um seine Ports zu öffnen.</p>
+          </div>
+          <button class="btn btn-secondary" data-action="add-connection">↗ Verbindung</button>
+        </div>
+        <div class="topology" id="topology" role="region" aria-label="Netzwerk-Topologie"></div>
+        <div class="legend" aria-hidden="true">
+          <span><i class="legend-line"></i> Verbindung</span>
+          <span><i class="legend-poe"></i> PoE-Port</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="inventory-section" id="inventar">
+      <div class="section-title-row">
+        <div>
+          <p class="eyebrow">INVENTAR & PORTS</p>
+          <h2>Alles im Blick</h2>
+        </div>
+        <div class="utility-actions">
+          <button class="text-btn" data-action="export">Exportieren</button>
+          <button class="text-btn" data-action="import">Importieren</button>
+          <input id="import-input" type="file" accept="application/json" hidden />
+        </div>
+      </div>
+
+      <div class="inventory-grid">
+        <div class="device-list-card panel">
+          <div class="panel-toolbar compact">
+            <h3>Geräte</h3>
+            <button class="icon-button" data-action="add-device" aria-label="Gerät hinzufügen">+</button>
+          </div>
+          <div id="device-list" class="device-list"></div>
+        </div>
+        <div class="ports-card panel">
+          <div class="panel-toolbar compact" id="ports-heading"></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Port</th><th>Status</th><th>Gegenstelle</th><th>Profil</th><th></th></tr></thead>
+              <tbody id="ports-table"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="occupancy-section" id="belegung">
+      <div class="section-title-row">
+        <div>
+          <p class="eyebrow">BELEGUNG</p>
+          <h2>Kapazität & Konflikte</h2>
+        </div>
+        <button class="text-btn danger-text" data-action="reset">Beispieldaten laden</button>
+      </div>
+      <div id="conflict-banner"></div>
+      <div class="occupancy-grid" id="occupancy-grid"></div>
+    </section>
+  </main>
+
+  <dialog id="device-dialog">
+    <form method="dialog" id="device-form" class="dialog-card">
+      <div class="dialog-heading"><div><p class="eyebrow">INVENTAR</p><h2 id="device-dialog-title">Gerät anlegen</h2></div><button class="dialog-close" value="cancel" aria-label="Schließen">×</button></div>
+      <input type="hidden" name="id" />
+      <div class="form-grid">
+        <label class="wide">Name<input name="name" required maxlength="40" placeholder="z. B. Core Switch" /></label>
+        <label>Typ<select name="type" required></select></label>
+        <label>Anzahl Ports<input name="portCount" type="number" min="1" max="96" value="8" required /></label>
+        <label>IP-Adresse<input name="ip" placeholder="10.20.0.2" /></label>
+        <label>Standort<input name="location" maxlength="40" placeholder="Rack, Büro …" /></label>
+      </div>
+      <div class="dialog-actions"><button class="text-btn danger-text dialog-delete" type="button" id="device-delete" hidden>Gerät löschen</button><span class="dialog-spacer"></span><button class="btn btn-ghost" value="cancel">Abbrechen</button><button class="btn btn-primary" value="default" id="device-save">Speichern</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="port-dialog">
+    <form method="dialog" id="port-form" class="dialog-card">
+      <div class="dialog-heading"><div><p class="eyebrow">PORT</p><h2>Port bearbeiten</h2></div><button class="dialog-close" value="cancel" aria-label="Schließen">×</button></div>
+      <input type="hidden" name="deviceId" /><input type="hidden" name="portId" />
+      <div class="form-grid">
+        <label class="wide">Bezeichnung<input name="name" required maxlength="30" /></label>
+        <label>Geschwindigkeit<select name="speed"><option>100 Mbit/s</option><option selected>1 Gbit/s</option><option>2,5 Gbit/s</option><option>10 Gbit/s</option><option>25 Gbit/s</option></select></label>
+        <label>Modus<select name="mode"><option>Access</option><option>Trunk</option><option>Uplink</option><option>WAN</option></select></label>
+        <label>VLAN<input name="vlan" maxlength="24" placeholder="1 oder 10,20" /></label>
+        <label class="check-label"><input name="poe" type="checkbox" /> PoE aktiv</label>
+      </div>
+      <div class="dialog-actions"><button class="btn btn-ghost" value="cancel">Abbrechen</button><button class="btn btn-primary" value="default">Speichern</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="connection-dialog">
+    <form method="dialog" id="connection-form" class="dialog-card">
+      <div class="dialog-heading"><div><p class="eyebrow">VERBINDUNG</p><h2>Ports verbinden</h2></div><button class="dialog-close" value="cancel" aria-label="Schließen">×</button></div>
+      <label>Bezeichnung<input name="label" maxlength="30" placeholder="z. B. Uplink" /></label>
+      <div class="endpoint-grid">
+        <div class="endpoint-card"><span>A</span><label>Gerät<select name="deviceA" required></select></label><label>Port<select name="portA" required></select></label></div>
+        <div class="link-mark">↔</div>
+        <div class="endpoint-card"><span>B</span><label>Gerät<select name="deviceB" required></select></label><label>Port<select name="portB" required></select></label></div>
+      </div>
+      <p class="form-error" id="connection-error" role="alert"></p>
+      <div class="dialog-actions"><button class="btn btn-ghost" value="cancel">Abbrechen</button><button class="btn btn-primary" value="default">Verbinden</button></div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
