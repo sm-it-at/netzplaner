@@ -51,7 +51,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Danach auf dem Docker-Host öffnen: **http://localhost:8080**.
+Danach öffnen: **http://IP-DES-DOCKER-HOSTS:8080** oder auf dem Host selbst **http://localhost:8080**.
 Beim ersten Build lädt Docker das offizielle Nginx-Basisimage herunter. Es ist über
 Version und Prüfsumme festgelegt und unterstützt Linux amd64 / x86-64 und ARM64.
 Für den optionalen Scanner installiert der Build aus Alpine 3.24 zusätzlich `python3`,
@@ -64,16 +64,18 @@ zu einem separat erstellten Image der Version 1.0.0 stehen in [PRUEFUNG.md](PRUE
 
 ## Zugriff aus dem Heimnetz
 
-Standardmäßig wird nur `127.0.0.1:8080` des Docker-Hosts verwendet.
-Für Zugriff über eine andere Maschine eine Datei `.env` neben `compose.yaml` anlegen:
+Standardmäßig lauscht der Netzplaner seit 1.3.0 auf allen IPv4-Adressen des
+Docker-Hosts (`0.0.0.0:8080`) und ist damit im Heimnetz erreichbar. Wer ihn nur auf
+dem Host selbst oder auf einer bestimmten LAN-IP anbieten will, legt eine Datei
+`.env` neben `compose.yaml` an:
 
 ```dotenv
-BIND_ADDRESS=0.0.0.0
+BIND_ADDRESS=127.0.0.1
 PORT=8080
 ```
 
-Danach `docker compose up -d` ausführen und `http://IP-DES-DOCKER-HOSTS:8080` öffnen.
-Alternativ lässt sich statt `0.0.0.0` die konkrete LAN-IP des Hosts eintragen.
+Danach `docker compose up -d` ausführen. Statt `127.0.0.1` lässt sich auch die
+konkrete LAN-IP des Hosts eintragen.
 Die Docker-Version besitzt keinen ChatGPT-Login. Für Zugriff aus dem Internet
 eine eigene Anmeldung am Reverse Proxy verwenden. Der Container spricht intern HTTP auf Port 8080.
 
@@ -84,7 +86,7 @@ Härtungs-Flags gelten dagegen nur, wenn sie beim Start angegeben werden:
 
 ```sh
 docker build -t netzplaner:1.3.0 .
-docker run -d --name netzplaner --restart unless-stopped -p 127.0.0.1:8080:8080 --env-file .env --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 128 --memory 256m --cpus 1 netzplaner:1.3.0
+docker run -d --name netzplaner --restart unless-stopped -p 0.0.0.0:8080:8080 --env-file .env --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 128 --memory 256m --cpus 1 netzplaner:1.3.0
 ```
 
 Wird der Container später über einen Container-Editor neu erstellt, etwa in Portainer,

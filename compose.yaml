@@ -7,7 +7,7 @@ services:
       context: .
     restart: unless-stopped
     ports:
-      - "${BIND_ADDRESS:-127.0.0.1}:${PORT:-8080}:8080"
+      - "${BIND_ADDRESS:-0.0.0.0}:${PORT:-8080}:8080"
     environment:
       SCAN_ALLOWED_CIDRS: "${SCAN_ALLOWED_CIDRS:-}"
       SCAN_TOKEN: "${SCAN_TOKEN:-}"

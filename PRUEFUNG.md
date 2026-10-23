@@ -30,6 +30,9 @@ gelesen.
   `/api/scan/status`. Die 503-Antworten von Nginx und App nennen `SCAN_TOKEN` und
   `SCAN_ALLOWED_CIDRS`.
 - **Zeilenenden:** `.gitattributes` erzwingt LF für Shell-Skripte.
+- **Standard-Bindung:** `BIND_ADDRESS` ist ohne `.env` jetzt `0.0.0.0` statt `127.0.0.1`
+  (Wunsch Kaarl), die App ist also ohne weitere Konfiguration im Heimnetz erreichbar.
+  Intern bleibt alles auf Loopback: Scanner, Nginx-Weiterleitung und Healthcheck.
 
 ### Prüfungen am 23-10-2026
 
