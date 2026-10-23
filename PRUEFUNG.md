@@ -1,6 +1,71 @@
 # Prüfstand vom 23-10-2026
 
-## Aktueller Quellstand: Version 1.2.1
+## Aktueller Quellstand: Version 1.3.0
+
+App und Scanner laufen in einem Container. Funktionsumfang, Scanner-API und
+Datenformat bleiben gleich; gespeicherte Pläne und JSON-Exporte werden unverändert
+gelesen.
+
+### Änderungen
+
+- **Ein Image:** `nginx:1.30.6-alpine@sha256:47928bf6…` (Alpine 3.24.3), dazu aus
+  Alpine 3.24 `python3` 3.14.8, `nmap` 7.99 und `tini` 0.19.0. `scanner/Dockerfile`
+  und der Compose-Dienst `scanner` samt Profil `scan` entfallen.
+- **Prozessmodell:** `tini -g` ist PID 1 und startet `docker/entrypoint.sh`. Das Skript
+  startet den Scanner nur bei gesetztem `SCAN_TOKEN`, und zwar in einer
+  Neustart-Schleife mit 5 Sekunden Pause. Danach ersetzt es sich durch Nginx; Nginx
+  erbt `SCAN_TOKEN` und `SCAN_ALLOWED_CIDRS` nicht. Das Stoppsignal ist SIGTERM, das
+  der Scanner mit seinem vorhandenen Handler geordnet verarbeitet.
+- **Kein Docker-DNS mehr:** Der Scanner lauscht auf `127.0.0.1:8090`, Nginx leitet ohne
+  `resolver` dorthin weiter. Anlass war der Ausfall vom 23-10-2026: Ein Scanner-Container,
+  der außerhalb von Compose neu erstellt worden war, hatte den DNS-Alias `scanner`
+  verloren.
+- **Im Image festgelegt:** Benutzer `101:101`, Entrypoint, Stoppsignal und Healthcheck.
+  `docker/healthcheck.sh` prüft Nginx und, bei gesetztem Token, den Scanner. Diese
+  Einstellungen überstehen damit auch eine Neuerstellung außerhalb von Compose.
+- **Compose:** ein Dienst mit `pids_limit 128`, `mem_limit 256m` und `cpus 1.0`. Nginx
+  läuft mit `worker_processes 2`, weil sich `auto` nach den CPUs des Hosts richtet.
+- **Konfiguration:** Leere Einträge in `SCAN_ALLOWED_CIDRS` (abschließendes Komma)
+  werden ignoriert. Ist der Scanner deaktiviert, nennt die App den festen Grund aus
+  `/api/scan/status`. Die 503-Antworten von Nginx und App nennen `SCAN_TOKEN` und
+  `SCAN_ALLOWED_CIDRS`.
+- **Zeilenenden:** `.gitattributes` erzwingt LF für Shell-Skripte.
+
+### Prüfungen am 23-10-2026
+
+- **Lokal (Windows, Node.js 26.8.1):** 63 JavaScript-Tests bestanden, außerdem 27
+  Python-Tests unter Python 3.13.15 und 3.14.7. Davon wurden 2 Entrypoint-Tests
+  übersprungen, weil Windows keine Prozessgruppen hat. Gegenprobe gegen 1.2.1: Die
+  neuen Tests schlagen dort fehl.
+- **Build auf `pve-docker`** (Docker 29.9.1, Compose v5.6.0):
+  - Build erfolgreich, Image 114.612.472 Byte. Zum Vergleich 1.2.1: App-Image 62,4 MB
+    plus Scanner-Image 63,2 MB.
+  - Im Image: Alpine 3.24.3, Python 3.14.8, Nmap 7.99, tini 0.19.0, Nginx 1.30.6.
+    `nginx -t` erfolgreich.
+  - Alle 27 Python-Tests im Image bestanden, auch die Entrypoint-Tests mit
+    BusyBox-`sh`.
+- **Testcontainer** (Compose-Projekt `netzplaner-test` auf `127.0.0.1:18080`, eigenes
+  Test-Token, Freigabe `10.200.0.0/24`):
+  - Status `healthy`, `/api/scan/status` liefert `{"enabled":true,"reason":""}`, der
+    CSP-Header ist gesetzt.
+  - Prozessbaum: `tini` → Nginx-Master → `sh`-Schleife → `python3`, dazu 2 Worker.
+    `pids_limit 128`, 256 MiB, `read_only`, `cap_drop: ALL` und `no-new-privileges`
+    sind aktiv.
+  - Scanner per SIGTERM beendet: Logzeile „Scanner beendet (Code 0), Neustart in 5 s“,
+    nach 5,06 s wieder bereit.
+  - Echter Scan „Geräte suchen“ auf `10.200.0.11`, den Docker-Host selbst:
+    abgeschlossen, Gerät gefunden.
+  - `docker stop` in 287 ms mit Exit-Code 0.
+  - Ohne Token: Container `healthy`, `/api/scan/status` antwortet mit 503 und dem neuen
+    Hinweis, das Log meldet „Scanner nicht gestartet“.
+  - Danach wurden Testcontainer, Netz und Test-Images entfernt. Der laufende Stack
+    blieb unberührt.
+
+Weiterhin offen: die Umstellung des laufenden Stacks auf `pve-docker`, das Profil
+„Häufige TCP-Ports“ über ein ganzes /24 und eine Browserprüfung der geänderten
+Scanner-Hinweise.
+
+## Historischer Prüfstand: Version 1.2.1
 
 Fehlerbehebung und Härtung auf Basis von 1.2.0. Funktionsumfang und Datenformat
 bleiben gleich; gespeicherte Pläne und JSON-Exporte aus 1.2.0 werden unverändert
@@ -155,14 +220,19 @@ node --check public/model.js
 node --check public/scan.js
 node --check public/scan-model.js
 python -m unittest discover -s test -p "*_test.py"
+sh -n docker/entrypoint.sh
+sh -n docker/healthcheck.sh
 docker compose config --quiet
-docker compose --profile scan config --quiet
 ```
 
 Die jsdom-Abhängigkeit wird ausschließlich für Entwicklung und Tests benötigt.
-Der Nginx-Container stellt die statischen App-Dateien bereit und benötigt kein
-Node.js, Python oder eine Datenbank. Nur der optionale Scanner-Container benötigt
-Python und Nmap.
+Das Image enthält Nginx, Python, Nmap und tini, aber weder Node.js noch eine
+Datenbank. Die Python-Tests lassen sich auch im gebauten Image ausführen; dort
+laufen die Entrypoint-Tests mit der Shell des Images:
+
+```sh
+docker run --rm --entrypoint python3 -v "$PWD":/src:ro -w /src netzplaner:1.3.0 -m unittest discover -s test -p "*_test.py"
+```
 
 ## Auf dem Docker-Zielhost prüfen
 
@@ -185,8 +255,8 @@ Bei einem abweichenden Host-Port die URL entsprechend ändern; unter Windows
 6. CSV und SVG exportieren und in einer passenden Anwendung öffnen.
 7. Auf einem schmalen Bildschirm sowie in der Druckvorschau alle Bedienelemente
    und Tabellen auf Lesbarkeit prüfen.
-8. Ohne Scanner-Profil im Bereich Netzwerkscan eine Verbindung versuchen: verständlicher Hinweis
-   auf den fehlenden Dienst; XML-Import und übrige App bleiben benutzbar.
+8. Ohne `SCAN_TOKEN` im Bereich Netzwerkscan eine Verbindung versuchen: verständlicher
+   Hinweis auf den fehlenden Scanner; XML-Import und übrige App bleiben benutzbar.
 9. Eine selbst erzeugte Nmap-XML-Datei importieren, einzelne Funde auswählen und
    übernehmen. Vorhandene IP-Adressen bleiben unverändert; TCP-Dienste erscheinen
    als Notizen und erzeugen keine physischen Ports.
@@ -195,9 +265,9 @@ Für die optionale Scanner-Prüfung `.env` gemäß README mit dem eigenen erlaub
 privaten Zielnetz und einem Token konfigurieren, dann:
 
 ```sh
-docker compose --profile scan up -d --build
-docker compose --profile scan ps
-docker compose --profile scan logs --tail 50 scanner
+docker compose up -d
+docker compose ps
+docker compose logs --tail 50 netzplaner
 ```
 
 Im Browser Token, Zielnetz und Profil eingeben. Nur ein eigenes oder ausdrücklich
@@ -208,7 +278,7 @@ Adressen umfassen und höchstens 180 Sekunden laufen. Token und Scanergebnisse
 dürfen nicht im Plan-Export oder Browser-Speicher landen; ausschließlich
 übernommene Geräte gehören zum gespeicherten Plan.
 
-Für 1.2.1 zusätzlich das Profil **Häufige TCP-Ports** einmal über das ganze eigene
+Seit 1.2.1 zusätzlich das Profil **Häufige TCP-Ports** einmal über das ganze eigene
 /24 laufen lassen. Dauer und Anzahl der gemeldeten Geräte hier eintragen und mit
 **Geräte suchen** im selben Netz vergleichen. Ist ein Reverse Proxy vorgeschaltet,
 Scanstart und Abbruch auch über dessen Adresse prüfen. Die Antwort-Header von `/` mit

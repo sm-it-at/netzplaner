@@ -3,3 +3,6 @@
 !nginx.conf
 !public/
 !public/**
+!docker/
+!docker/**
+!scanner/server.py

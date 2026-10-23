@@ -2,10 +2,10 @@
 
 Interaktiver Netzwerkplaner für Homelab-Netze, als statische Website in Nginx.
 Seit Version 1.2.0 ergänzen ein optionaler Nmap-Netzwerkscan und der lokale Import
-von Nmap-XML-Dateien die Geräte-, Port- und Verbindungsplanung. Version 1.2.1 macht
-das Scanprofil **Häufige TCP-Ports** für ganze /24-Netze nutzbar, ergänzt eine
-Content-Security-Policy und legt auch das Scanner-Image über Version und Prüfsumme
-fest. Die Änderungen im Einzelnen stehen in [PRUEFUNG.md](PRUEFUNG.md).
+von Nmap-XML-Dateien die Geräte-, Port- und Verbindungsplanung. Version 1.3.0 bündelt
+App und Scanner in einem Container: Nginx und der Scanner laufen unter `tini` in einem
+Image, und der Scanner startet nur, wenn `SCAN_TOKEN` gesetzt ist. Die Änderungen im
+Einzelnen stehen in [PRUEFUNG.md](PRUEFUNG.md).
 
 ## Funktionen
 
@@ -52,14 +52,13 @@ docker compose ps
 ```
 
 Danach auf dem Docker-Host öffnen: **http://localhost:8080**.
-Beim ersten Build lädt Docker das offizielle Nginx-Basisimage herunter, mit dem
-Profil `scan` zusätzlich das offizielle Python-Image für den Scanner. Beide sind über
-Version und Prüfsumme festgelegt und unterstützen Linux amd64 / x86-64 und ARM64.
-Für die statische App werden weder Node.js noch Python oder eine
-Datenbank benötigt. Der optionale Scanner läuft als eigener Container mit Python
-und Nmap; ohne das Profil `scan` wird dieser Dienst nicht gestartet.
+Beim ersten Build lädt Docker das offizielle Nginx-Basisimage herunter. Es ist über
+Version und Prüfsumme festgelegt und unterstützt Linux amd64 / x86-64 und ARM64.
+Für den optionalen Scanner installiert der Build aus Alpine 3.24 zusätzlich `python3`,
+`nmap` und `tini`. Node.js oder eine Datenbank werden nicht benötigt. Ohne
+`SCAN_TOKEN` läuft im Container nur Nginx.
 
-Ein vorgefertigtes Image-Archiv für Version 1.2.1 ist nicht Teil dieses Repositories.
+Ein vorgefertigtes Image-Archiv für Version 1.3.0 ist nicht Teil dieses Repositories.
 Der Schnellstart baut das Image aus dem aktuellen Quellcode. Die früheren Nachweise
 zu einem separat erstellten Image der Version 1.0.0 stehen in [PRUEFUNG.md](PRUEFUNG.md).
 
@@ -78,12 +77,27 @@ Alternativ lässt sich statt `0.0.0.0` die konkrete LAN-IP des Hosts eintragen.
 Die Docker-Version besitzt keinen ChatGPT-Login. Für Zugriff aus dem Internet
 eine eigene Anmeldung am Reverse Proxy verwenden. Der Container spricht intern HTTP auf Port 8080.
 
+### Ohne Compose (Portainer, `docker run`)
+
+Das Image bringt Benutzer, Entrypoint, Stoppsignal und Healthcheck selbst mit. Die
+Härtungs-Flags gelten dagegen nur, wenn sie beim Start angegeben werden:
+
+```sh
+docker build -t netzplaner:1.3.0 .
+docker run -d --name netzplaner --restart unless-stopped -p 127.0.0.1:8080:8080 --env-file .env --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 128 --memory 256m --cpus 1 netzplaner:1.3.0
+```
+
+Wird der Container später über einen Container-Editor neu erstellt, etwa in Portainer,
+gehen diese Flags leicht verloren. Nach solchen Änderungen mit `docker inspect`
+prüfen oder den Stack mit Compose verwalten.
+
 ## Optionalen Netzwerkscan aktivieren
 
 Scans nur für eigene oder ausdrücklich freigegebene Netze verwenden. In `.env`
 die tatsächlich erlaubten IPv4-Netze und ein zufälliges Token mit mindestens
-24 Zeichen eintragen. Der Scanner bleibt ohne gültige Freigabe und Token deaktiviert.
-Ein solches Token lässt sich zum Beispiel mit einem lokal installierten Python
+24 Zeichen eintragen. Der Scanner startet nur, wenn `SCAN_TOKEN` gesetzt ist. Bei
+ungültigem Token oder ohne gültige Freigabe bleibt er deaktiviert und die App nennt
+den Grund. Ein solches Token lässt sich zum Beispiel mit einem lokal installierten Python
 erzeugen:
 
 ```sh
@@ -101,11 +115,16 @@ SCAN_TOKEN=
 (`10.0.0.0/8`, `172.16.0.0/12` oder `192.168.0.0/16` beziehungsweise deren Teilnetze).
 Ein einzelner Scan darf höchstens 256 IPv4-Adressen umfassen und muss vollständig
 innerhalb dieser Freigabe liegen. Öffentliche Adressen und beliebige Nmap-Argumente
-werden nicht akzeptiert.
+werden nicht akzeptiert. Leerzeichen und ein abschließendes Komma in der Liste stören nicht.
 
 ```sh
-docker compose --profile scan up -d --build
+chmod 600 .env
+docker compose up -d
 ```
+
+`.env` enthält das Token und gehört deshalb nur dem Besitzer. Compose liest `.env`
+beim Erstellen des Containers; nach Änderungen daher `docker compose up -d` ausführen,
+ein bloßer Neustart übernimmt neue Werte nicht.
 
 In der App den Bereich **Netzwerkscan** öffnen, das Token eingeben und
 **Scanner verbinden** wählen. Danach Zielnetz und Scanprofil wählen und den
@@ -145,16 +164,18 @@ eingefügt. Bereits vorhandene Geräte mit derselben IP-Adresse werden nicht
 überschrieben. TCP-Dienste werden als Notizen am Gerät dokumentiert; sie sind
 keine physischen Netzwerkports im Plan.
 
-Der Scanner besitzt keinen veröffentlichten Host-Port. Nginx vermittelt die
-Anfragen intern an Port 8090. Beide Container laufen ohne zusätzliche Linux-
-Capabilities; der Scanner verwendet Benutzer `101:101` und ein schreibgeschütztes
-Dateisystem. Ein Host-Netzwerk ist für diese TCP-Scans nicht erforderlich.
+Der Scanner lauscht nur auf `127.0.0.1:8090` innerhalb des Containers; Nginx
+vermittelt die Anfragen. Alle Prozesse laufen als Benutzer `101:101` ohne Linux-
+Capabilities auf einem schreibgeschützten Dateisystem. `tini` läuft als PID 1 und
+leitet Signale an alle Prozesse weiter. Ein beendeter Scanner startet nach 5 Sekunden
+neu; endet Nginx, endet der Container und Docker startet ihn gemäß Restart-Policy neu.
+Ein Host-Netzwerk ist für diese TCP-Scans nicht erforderlich.
 Erreichbar sind nur Netze, zu denen der Docker-Container tatsächlich eine Route
 hat und deren Firewalls die Anfragen zulassen. VLANs werden nicht automatisch
 überschritten. MAC-Adressen, Betriebssysteme, Switch-Ports und Verkabelung lassen
 sich daraus nicht zuverlässig ableiten.
 
-Die gehostete Sites-Version hat keinen Zugriff auf diesen Docker-Dienst und
+Die gehostete Sites-Version hat keinen Zugriff auf diesen Scanner und
 kann deshalb keine direkten LAN-Scans starten. Der XML-Import funktioniert auch
 ohne Scanner.
 
@@ -218,16 +239,28 @@ docker compose down
 ```
 
 Der Container läuft als Benutzer `101:101`, mit schreibgeschütztem Dateisystem
-und einem temporären Verzeichnis unter `/tmp`. Compose prüft die Erreichbarkeit regelmäßig.
+und einem temporären Verzeichnis unter `/tmp`. Der Healthcheck des Images prüft Nginx
+und, bei gesetztem `SCAN_TOKEN`, auch den Scanner.
 Nginx sendet eine Content-Security-Policy: Skripte, Stylesheets und Verbindungen
 kommen nur von der eigenen Adresse, und fremde Seiten dürfen die App nicht einbetten.
+
+### Von 1.2.x auf 1.3.0 umstellen
+
+```sh
+git pull
+docker compose up -d --build --remove-orphans
+```
+
+`--remove-orphans` entfernt den bisherigen Scanner-Container. `.env` gilt unverändert;
+das Compose-Profil `scan` gibt es nicht mehr. Pläne im Browser bleiben erhalten, solange
+Adresse und Port der App gleich bleiben.
 
 ## Herkunft und Prüfung
 
 Quelle: Netzplaner, Sites-Version 1, Projekt `appgprj_6aacd418d2e4819196af072953d42453`,
 Quellstand `fcea38ae38a80793ff165b4372f9fa9b3dc7c41d`.
 Diese ursprüngliche Version bildet die Grundlage der Docker-App; die Versionen
-1.1.0 bis 1.2.1 entwickeln die Laufzeitdateien und Tests weiter.
+1.1.0 bis 1.3.0 entwickeln die Laufzeitdateien und Tests weiter.
 
 Für Entwicklung und Tests werden Node.js 26 oder eine von jsdom unterstützte
 Version ab Node.js 22.22.2 (22.x) beziehungsweise 24.15.0 (24.x) sowie npm benötigt:
@@ -241,11 +274,12 @@ python -m unittest discover -s test -p "*_test.py"
 Die Testsuite umfasst Modelltests und DOM-Integrationstests mit jsdom.
 Diese Entwicklungsabhängigkeiten werden für den Nginx-Container nicht benötigt.
 Die Python-Prüfungen testen den Scanner mit simulierten Nmap-Prozessen und lösen
-keine Netzwerkscans aus.
+keine Netzwerkscans aus. Die Tests des Entrypoint-Skripts brauchen eine POSIX-Shell
+mit Prozessgruppen und werden unter Windows übersprungen.
 Prüfergebnisse, historische Nachweise und offene Laufzeitprüfungen stehen in
 [PRUEFUNG.md](PRUEFUNG.md).
 
 Technische Referenzen: [offizielles Nginx-Image](https://hub.docker.com/_/nginx),
-[offizielles Python-Image](https://hub.docker.com/_/python),
+[tini](https://github.com/krallin/tini),
 [Docker Compose](https://docs.docker.com/reference/compose-file/services/),
 [Nmap-Zeitsteuerung](https://nmap.org/book/man-performance.html).
