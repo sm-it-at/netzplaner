@@ -1,6 +1,7 @@
 """Unit/API tests use fake Nmap processes and in-memory HTTP; no sockets or scans."""
 
 import importlib.util
+import inspect
 import io
 import ipaddress
 import json
@@ -88,6 +89,20 @@ class ConfigTests(unittest.TestCase):
         for value in ("127.0.0.0/8", "169.254.0.0/16", "100.64.0.0/10", "8.8.8.0/24", "::1/128", "192.168.1.2/24", "invalid", "192.168.0.0/15"):
             with self.subTest(value=value):
                 self.assertFalse(config(SCAN_ALLOWED_CIDRS=value).enabled)
+
+    def test_allowlist_ignores_empty_entries_from_stray_commas(self):
+        for value in ("192.168.1.0/24,", " 192.168.1.0/24 , 10.0.0.0/8 ,", "192.168.1.0/24,,10.0.0.0/8"):
+            with self.subTest(value=value):
+                self.assertTrue(config(SCAN_ALLOWED_CIDRS=value).enabled)
+        self.assertEqual(config(SCAN_ALLOWED_CIDRS="192.168.1.0/24,").networks, (ipaddress.ip_network("192.168.1.0/24"),))
+        for value in (",", " , ,"):
+            with self.subTest(value=value):
+                settings = config(SCAN_ALLOWED_CIDRS=value)
+                self.assertFalse(settings.enabled)
+                self.assertIn("Kein Scan-Netz", settings.reason)
+
+    def test_server_listens_on_loopback_by_default(self):
+        self.assertEqual(inspect.signature(scanner.make_server).parameters["address"].default, ("127.0.0.1", 8090))
 
     def test_accept_target_host_and_canonical_small_network(self):
         for target in ("192.168.1.10", "192.168.1.0/24", "10.1.2.0/25", "10.1.2.3/32"):

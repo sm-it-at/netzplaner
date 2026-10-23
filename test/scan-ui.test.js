@@ -179,6 +179,18 @@ test("a rejected scan start names the Host header only for the scanner's origin 
   }
 });
 
+test("a deactivated scanner names a known configuration reason and hides unknown ones", async (t) => {
+  for (const [reason, expected] of [["Kein Scan-Netz freigegeben (SCAN_ALLOWED_CIDRS).", /In SCAN_ALLOWED_CIDRS ist kein Netz/], ["SENSITIVE detail", /Container-Konfiguration prüfen/]]) {
+    await t.test(reason, async (st) => {
+      const app = await setup(st, { respond: () => ok({ enabled: false, reason }) });
+      await app.connect();
+      assert.match(app.$("#scan-status").textContent, expected);
+      assert.doesNotMatch(app.$("#scan-status").textContent, /SENSITIVE/);
+      assert.equal(app.requests.length, 1); assert.equal(app.$("#scan-start").disabled, true);
+    });
+  }
+});
+
 test("polling stops after 200 seconds while leaving explicit cancellation available", async (t) => {
   const app = await setup(t, { respond: (url) => {
     if (url.endsWith("/status")) return ok({ enabled: true });

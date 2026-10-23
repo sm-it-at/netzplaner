@@ -5,10 +5,13 @@ const PROFILE_NAMES = { discovery: "Geräte suchen", ports: "Häufige TCP-Ports"
 // Only these fixed scanner texts are explained; any other backend text stays hidden.
 const SCANNER_HINTS = new Map([
   ["Der Scan wurde nach 180 Sekunden beendet.", "Der Scan wurde nach 180 Sekunden beendet. Bitte einen kleineren Bereich scannen oder zuerst „Geräte suchen“ verwenden."],
-  ["Origin und Host der Anfrage müssen übereinstimmen.", "Der Scanner lehnt die Anfrage ab, weil Origin und Host nicht übereinstimmen. Ein Reverse Proxy muss den ursprünglichen Host-Header weitergeben."]
+  ["Origin und Host der Anfrage müssen übereinstimmen.", "Der Scanner lehnt die Anfrage ab, weil Origin und Host nicht übereinstimmen. Ein Reverse Proxy muss den ursprünglichen Host-Header weitergeben."],
+  ["SCAN_TOKEN muss 24 bis 256 druckbare Zeichen ohne Leerzeichen enthalten.", "Der Scanner ist deaktiviert: SCAN_TOKEN muss 24 bis 256 druckbare Zeichen ohne Leerzeichen enthalten."],
+  ["Kein Scan-Netz freigegeben (SCAN_ALLOWED_CIDRS).", "Der Scanner ist deaktiviert: In SCAN_ALLOWED_CIDRS ist kein Netz freigegeben."],
+  ["SCAN_ALLOWED_CIDRS enthält ungültige oder nicht private IPv4-Netze.", "Der Scanner ist deaktiviert: SCAN_ALLOWED_CIDRS enthält ungültige oder nicht private IPv4-Netze."]
 ]);
 const scannerHint = async (response) => { try { return SCANNER_HINTS.get((await response.json())?.error); } catch { return undefined; } };
-const HTTP_MESSAGES = { 400: "Bitte Scanbereich und Profil prüfen.", 401: "Der Scanner-Token ist ungültig. Bitte erneut verbinden.", 403: "Dieser Scanbereich ist nicht freigegeben.", 409: "Im Scanner läuft bereits ein Scan. Bitte später erneut versuchen.", 429: "Bitte einige Sekunden warten und erneut starten.", 503: "Der lokale Scanner ist nicht verfügbar. Bitte Docker-Konfiguration prüfen oder XML importieren." };
+const HTTP_MESSAGES = { 400: "Bitte Scanbereich und Profil prüfen.", 401: "Der Scanner-Token ist ungültig. Bitte erneut verbinden.", 403: "Dieser Scanbereich ist nicht freigegeben.", 409: "Im Scanner läuft bereits ein Scan. Bitte später erneut versuchen.", 429: "Bitte einige Sekunden warten und erneut starten.", 503: "Der Scanner läuft nicht. SCAN_TOKEN und SCAN_ALLOWED_CIDRS in der Container-Konfiguration prüfen oder XML importieren." };
 
 /** No network or browser-storage operations occur until an explicit user action. */
 export function initScanner({ getState, onImport, fetch: fetchOverride } = {}) {
@@ -127,7 +130,7 @@ export function initScanner({ getState, onImport, fetch: fetchOverride } = {}) {
     token = entered; config = null; connecting = true; controls(); status("Scanner wird verbunden …");
     try {
       const availability = await api("/status", {}, false);
-      if (!availability.enabled) throw new Error("Der lokale Scanner ist deaktiviert. Bitte Docker-Konfiguration prüfen oder XML importieren.");
+      if (!availability.enabled) throw new Error(SCANNER_HINTS.get(availability.reason) || "Der lokale Scanner ist deaktiviert. Bitte Container-Konfiguration prüfen oder XML importieren.");
       const next = await api("/config");
       if (!Array.isArray(next.allowedCidrs) || !next.allowedCidrs.length || next.allowedCidrs.some((cidr) => typeof cidr !== "string" || cidr.length > 32) || !Array.isArray(next.profiles)) throw new Error("Die Scanner-Konfiguration konnte nicht gelesen werden.");
       const profiles = next.profiles.filter((profile) => profile && Object.hasOwn(PROFILE_NAMES, profile.id));

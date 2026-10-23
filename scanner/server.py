@@ -1,4 +1,6 @@
-"""Optional, deliberately restricted Nmap sidecar for trusted homelab users.
+"""Optional, deliberately restricted Nmap service for trusted homelab users.
+
+It runs beside nginx in the same container and listens on loopback only.
 
 Only RFC1918 IPv4 targets explicitly allowed by the operator are accepted. Nmap
 runs without raw sockets; no shell, DNS, script engine, or arbitrary flags exist
@@ -64,14 +66,14 @@ class Config:
         token = env.get("SCAN_TOKEN", "")
         if not 24 <= len(token) <= 256 or not all(33 <= ord(char) <= 126 for char in token):
             return cls("", (), "SCAN_TOKEN muss 24 bis 256 druckbare Zeichen ohne Leerzeichen enthalten.")
-        raw = env.get("SCAN_ALLOWED_CIDRS", "").strip()
-        if not raw:
+        # A trailing or doubled comma is a typo, not an additional network.
+        values = [value.strip() for value in env.get("SCAN_ALLOWED_CIDRS", "").split(",") if value.strip()]
+        if not values:
             return cls(token, (), "Kein Scan-Netz freigegeben (SCAN_ALLOWED_CIDRS).")
         try:
-            values = raw.split(",")
             if len(values) > 32:
                 raise ValueError()
-            networks = tuple(ipaddress.ip_network(value.strip(), strict=True) for value in values)
+            networks = tuple(ipaddress.ip_network(value, strict=True) for value in values)
             if not all(is_private_network(network) for network in networks):
                 raise ValueError()
         except ValueError:
@@ -477,7 +479,7 @@ class BoundedHTTPServer(ThreadingHTTPServer):
             self.slots.release()
 
 
-def make_server(address=("0.0.0.0", 8090), config=None, manager=None):
+def make_server(address=("127.0.0.1", 8090), config=None, manager=None):
     server = BoundedHTTPServer(address, Handler)
     server.manager = manager or ScanManager(config or Config.from_env())
     return server
