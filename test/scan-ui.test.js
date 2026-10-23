@@ -83,6 +83,21 @@ test("scanner connects only after click and keeps token out of fields, storage, 
   assert.equal(app.$("#scan-start").disabled, false); assert.equal(app.requests.some((request) => request.options.method === "POST"), false);
 });
 
+test("SCAN_AUTH=none connects without a token and never sends one, even if typed", async (t) => {
+  const app = await setup(t, { respond: (url) => url.endsWith("/status") ? ok({ enabled: true, reason: "", auth: "none" }) : ok({ allowedCidrs: ["192.168.1.0/24"], profiles: [{ id: "discovery" }] }) });
+  app.$("#scan-token").value = "typed-but-not-needed"; app.$("#scan-connect").click(); await flush();
+  assert.deepEqual(app.requests.map((request) => request.url), ["/api/scan/status", "/api/scan/config"]);
+  assert.equal(app.requests.every((request) => request.options.headers.Authorization === undefined), true);
+  assert.match(app.$("#scan-connection").textContent, /SCAN_AUTH=none/); assert.equal(app.$("#scan-start").disabled, false);
+});
+
+test("token mode still rejects a short token before any authenticated request", async (t) => {
+  const app = await setup(t, { respond: () => ok({ enabled: true, reason: "", auth: "token" }) });
+  app.$("#scan-token").value = "too-short"; app.$("#scan-connect").click(); await flush();
+  assert.deepEqual(app.requests.map((request) => request.url), ["/api/scan/status"]);
+  assert.match(app.$("#scan-status").textContent, /mindestens 24 Zeichen/); assert.equal(app.$("#scan-start").disabled, true);
+});
+
 test("scan completion unlocks controls and displays reviewable hosts without changing the plan", async (t) => {
   const app = await setup(t, { respond: (url, options) => {
     if (url.endsWith("/status")) return ok({ enabled: true });

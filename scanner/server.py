@@ -59,17 +59,22 @@ class Config:
     token: str
     networks: tuple
     reason: str = ""
+    auth: str = "token"
 
     @classmethod
     def from_env(cls, env=None):
         env = os.environ if env is None else env
-        token = env.get("SCAN_TOKEN", "")
-        if not 24 <= len(token) <= 256 or not all(33 <= ord(char) <= 126 for char in token):
+        auth = env.get("SCAN_AUTH", "").strip().lower() or "token"
+        if auth not in ("token", "none"):
+            return cls("", (), "SCAN_AUTH muss token oder none sein.")
+        # SCAN_AUTH=none deliberately lets everyone who reaches the app start scans.
+        token = env.get("SCAN_TOKEN", "") if auth == "token" else ""
+        if auth == "token" and (not 24 <= len(token) <= 256 or not all(33 <= ord(char) <= 126 for char in token)):
             return cls("", (), "SCAN_TOKEN muss 24 bis 256 druckbare Zeichen ohne Leerzeichen enthalten.")
         # A trailing or doubled comma is a typo, not an additional network.
         values = [value.strip() for value in env.get("SCAN_ALLOWED_CIDRS", "").split(",") if value.strip()]
         if not values:
-            return cls(token, (), "Kein Scan-Netz freigegeben (SCAN_ALLOWED_CIDRS).")
+            return cls(token, (), "Kein Scan-Netz freigegeben (SCAN_ALLOWED_CIDRS).", auth)
         try:
             if len(values) > 32:
                 raise ValueError()
@@ -77,12 +82,12 @@ class Config:
             if not all(is_private_network(network) for network in networks):
                 raise ValueError()
         except ValueError:
-            return cls(token, (), "SCAN_ALLOWED_CIDRS enthält ungültige oder nicht private IPv4-Netze.")
-        return cls(token, networks)
+            return cls(token, (), "SCAN_ALLOWED_CIDRS enthält ungültige oder nicht private IPv4-Netze.", auth)
+        return cls(token, networks, auth=auth)
 
     @property
     def enabled(self):
-        return bool(self.token and self.networks and not self.reason)
+        return bool((self.token or self.auth == "none") and self.networks and not self.reason)
 
     def target(self, value):
         if not isinstance(value, str) or not value or len(value) > 32 or value != value.strip():
@@ -361,13 +366,14 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def authorize(self):
-        expected = self.manager.config.token
-        authorization = self.headers.get("Authorization", "")
-        provided = authorization[7:] if authorization.startswith("Bearer ") else ""
-        if not expected or not hmac.compare_digest(provided.encode("utf-8"), expected.encode("utf-8")):
-            raise APIError(401, "Gültiges Scan-Token erforderlich.")
-        if not self.manager.config.enabled:
-            raise APIError(503, self.manager.config.reason)
+        config = self.manager.config
+        if config.auth != "none":
+            authorization = self.headers.get("Authorization", "")
+            provided = authorization[7:] if authorization.startswith("Bearer ") else ""
+            if not config.token or not hmac.compare_digest(provided.encode("utf-8"), config.token.encode("utf-8")):
+                raise APIError(401, "Gültiges Scan-Token erforderlich.")
+        if not config.enabled:
+            raise APIError(503, config.reason)
 
     def check_origin(self):
         if self.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
@@ -414,7 +420,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.command == "GET" and path == "/healthz":
             return self.respond(200, {"ok": True})
         if self.command == "GET" and path == "/api/scan/status":
-            return self.respond(200, {"enabled": self.manager.config.enabled, "reason": self.manager.config.reason})
+            config = self.manager.config
+            return self.respond(200, {"enabled": config.enabled, "reason": config.reason, "auth": config.auth})
         self.authorize()
         if self.command in ("POST", "DELETE"):
             self.check_origin()

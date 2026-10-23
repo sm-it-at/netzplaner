@@ -4,8 +4,9 @@ Interaktiver Netzwerkplaner für Homelab-Netze, als statische Website in Nginx.
 Seit Version 1.2.0 ergänzen ein optionaler Nmap-Netzwerkscan und der lokale Import
 von Nmap-XML-Dateien die Geräte-, Port- und Verbindungsplanung. Version 1.3.0 bündelt
 App und Scanner in einem Container: Nginx und der Scanner laufen unter `tini` in einem
-Image, und der Scanner startet nur, wenn `SCAN_TOKEN` gesetzt ist. Die Änderungen im
-Einzelnen stehen in [PRUEFUNG.md](PRUEFUNG.md).
+Image, und der Scanner startet nur, wenn `SCAN_TOKEN` gesetzt ist. Mit Version 1.3.1
+lässt sich das Token per `SCAN_AUTH=none` abschalten; Standard bleibt der Betrieb mit
+Token. Die Änderungen im Einzelnen stehen in [PRUEFUNG.md](PRUEFUNG.md).
 
 ## Funktionen
 
@@ -56,9 +57,9 @@ Beim ersten Build lädt Docker das offizielle Nginx-Basisimage herunter. Es ist 
 Version und Prüfsumme festgelegt und unterstützt Linux amd64 / x86-64 und ARM64.
 Für den optionalen Scanner installiert der Build aus Alpine 3.24 zusätzlich `python3`,
 `nmap` und `tini`. Node.js oder eine Datenbank werden nicht benötigt. Ohne
-`SCAN_TOKEN` läuft im Container nur Nginx.
+`SCAN_TOKEN` und ohne `SCAN_AUTH=none` läuft im Container nur Nginx.
 
-Ein vorgefertigtes Image-Archiv für Version 1.3.0 ist nicht Teil dieses Repositories.
+Ein vorgefertigtes Image-Archiv für Version 1.3.1 ist nicht Teil dieses Repositories.
 Der Schnellstart baut das Image aus dem aktuellen Quellcode. Die früheren Nachweise
 zu einem separat erstellten Image der Version 1.0.0 stehen in [PRUEFUNG.md](PRUEFUNG.md).
 
@@ -85,8 +86,8 @@ Das Image bringt Benutzer, Entrypoint, Stoppsignal und Healthcheck selbst mit. D
 Härtungs-Flags gelten dagegen nur, wenn sie beim Start angegeben werden:
 
 ```sh
-docker build -t netzplaner:1.3.0 .
-docker run -d --name netzplaner --restart unless-stopped -p 0.0.0.0:8080:8080 --env-file .env --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 128 --memory 256m --cpus 1 netzplaner:1.3.0
+docker build -t netzplaner:1.3.1 .
+docker run -d --name netzplaner --restart unless-stopped -p 0.0.0.0:8080:8080 --env-file .env --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 128 --memory 256m --cpus 1 netzplaner:1.3.1
 ```
 
 Wird der Container später über einen Container-Editor neu erstellt, etwa in Portainer,
@@ -127,6 +128,22 @@ docker compose up -d
 `.env` enthält das Token und gehört deshalb nur dem Besitzer. Compose liest `.env`
 beim Erstellen des Containers; nach Änderungen daher `docker compose up -d` ausführen,
 ein bloßer Neustart übernimmt neue Werte nicht.
+
+### Ohne Token (`SCAN_AUTH=none`)
+
+```dotenv
+SCAN_ALLOWED_CIDRS=192.168.1.0/24
+SCAN_AUTH=none
+```
+
+Mit `SCAN_AUTH=none` verlangt der Scanner kein Token; `SCAN_TOKEN` wird ignoriert und
+darf leer bleiben. Die App verbindet sich dann ohne Token-Eingabe. Dafür darf jeder,
+der die App erreicht, in den freigegebenen Netzen scannen. Weil der Netzplaner
+standardmäßig auf `0.0.0.0` lauscht, ist das jeder im Heimnetz. Ist die App über einen
+Reverse Proxy aus dem Internet erreichbar, `SCAN_AUTH=none` nur zusammen mit einer
+Anmeldung am Proxy verwenden. Die Prüfung von `Origin` und `Host` gegen fremde Webseiten
+bleibt aktiv, ebenso alle Begrenzungen. Andere Werte als `token` oder `none`
+deaktivieren den Scanner, Standard ist `SCAN_AUTH=token`.
 
 In der App den Bereich **Netzwerkscan** öffnen, das Token eingeben und
 **Scanner verbinden** wählen. Danach Zielnetz und Scanprofil wählen und den
@@ -242,7 +259,7 @@ docker compose down
 
 Der Container läuft als Benutzer `101:101`, mit schreibgeschütztem Dateisystem
 und einem temporären Verzeichnis unter `/tmp`. Der Healthcheck des Images prüft Nginx
-und, bei gesetztem `SCAN_TOKEN`, auch den Scanner.
+und, wenn der Scanner läuft (`SCAN_TOKEN` gesetzt oder `SCAN_AUTH=none`), auch ihn.
 Nginx sendet eine Content-Security-Policy: Skripte, Stylesheets und Verbindungen
 kommen nur von der eigenen Adresse, und fremde Seiten dürfen die App nicht einbetten.
 
@@ -262,7 +279,7 @@ Adresse und Port der App gleich bleiben.
 Quelle: Netzplaner, Sites-Version 1, Projekt `appgprj_6aacd418d2e4819196af072953d42453`,
 Quellstand `fcea38ae38a80793ff165b4372f9fa9b3dc7c41d`.
 Diese ursprüngliche Version bildet die Grundlage der Docker-App; die Versionen
-1.1.0 bis 1.3.0 entwickeln die Laufzeitdateien und Tests weiter.
+1.1.0 bis 1.3.1 entwickeln die Laufzeitdateien und Tests weiter.
 
 Für Entwicklung und Tests werden Node.js 26 oder eine von jsdom unterstützte
 Version ab Node.js 22.22.2 (22.x) beziehungsweise 24.15.0 (24.x) sowie npm benötigt:

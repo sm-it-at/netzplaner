@@ -2,7 +2,7 @@ name: netzplaner
 
 services:
   netzplaner:
-    image: netzplaner:1.3.0
+    image: netzplaner:1.3.1
     build:
       context: .
     restart: unless-stopped
@@ -11,6 +11,7 @@ services:
     environment:
       SCAN_ALLOWED_CIDRS: "${SCAN_ALLOWED_CIDRS:-}"
       SCAN_TOKEN: "${SCAN_TOKEN:-}"
+      SCAN_AUTH: "${SCAN_AUTH:-token}"
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m,mode=1777

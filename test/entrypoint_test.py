@@ -71,6 +71,12 @@ class EntrypointTests(unittest.TestCase):
         self.assertNotIn("SCAN_ALLOWED_CIDRS=", nginx_env)
         self.assertIn("Neustart", (log / "stderr").read_text(encoding="utf-8"))
 
+    def test_scan_auth_none_starts_scanner_without_token(self):
+        code, log = self.run_entrypoint(SCAN_AUTH="none", SCAN_ALLOWED_CIDRS="192.168.1.0/24", WAIT_FOR_RESTART="1")
+        self.assertEqual(code, 0)
+        self.assertTrue((log / "scanner").read_text().startswith("/opt/netzplaner/server.py token="))
+        self.assertNotIn("SCAN_AUTH=", (log / "nginx-env").read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

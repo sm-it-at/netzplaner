@@ -1,6 +1,42 @@
 # Prüfstand vom 23-10-2026
 
-## Aktueller Quellstand: Version 1.3.0
+## Aktueller Quellstand: Version 1.3.1
+
+Das Scan-Token lässt sich abschalten. Standard bleibt der Betrieb mit Token;
+Datenformat und übrige API bleiben gleich.
+
+### Änderungen
+
+- **`SCAN_AUTH`:** Mit `SCAN_AUTH=none` verlangt der Scanner kein Token, `SCAN_TOKEN`
+  wird dann ignoriert. Werte außer `token` und `none` deaktivieren den Scanner.
+  Ohne Angabe gilt `token`. Die Prüfung von `Origin` und `Host` sowie alle
+  Begrenzungen gelten unverändert.
+- **Status:** `/api/scan/status` meldet zusätzlich `auth` (`token` oder `none`).
+- **Container:** Entrypoint und Healthcheck starten bzw. prüfen den Scanner auch dann,
+  wenn kein Token gesetzt ist, `SCAN_AUTH=none` aber schon. Nginx erbt auch
+  `SCAN_AUTH` nicht. Compose reicht `SCAN_AUTH` durch, Vorgabe `token`.
+- **Oberfläche:** Die App fragt zuerst `/api/scan/status` ab. Bei `auth: none` verbindet
+  sie ohne Token und sendet auch ein eingetipptes nicht mit. Im Token-Betrieb wird ein
+  zu kurzes Token erst danach abgewiesen, noch vor jeder authentifizierten Anfrage.
+- **Standard-Bindung** (aus PR #6, hier enthalten): `0.0.0.0` statt `127.0.0.1`.
+
+### Prüfungen am 23-10-2026
+
+- **Lokal:** 65 JavaScript-Tests und 30 Python-Tests unter 3.13.15 und 3.14.7
+  bestanden, davon 3 Entrypoint-Tests unter Windows übersprungen. Gegenprobe gegen
+  1.3.0: Die neuen Tests schlagen dort fehl.
+- **Im Image auf `pve-docker`:** Build mit 114.613.439 Byte, `nginx -t` erfolgreich,
+  alle 30 Python-Tests bestanden, auch die Entrypoint-Tests mit BusyBox-`sh`.
+- **Testcontainer** mit `SCAN_AUTH=none` (Projekt `netzplaner-test`, `127.0.0.1:18080`):
+  - Status `healthy`, `/api/scan/status` liefert `{"enabled":true,"reason":"","auth":"none"}`.
+  - `/api/scan/config` antwortet ohne Token.
+  - Ein `POST` mit fremdem `Origin` wird mit `403` abgewiesen.
+  - Discovery-Scan auf `10.200.0.11` ohne Token abgeschlossen.
+  - Die Umgebung von Nginx enthält keine `SCAN_*`-Variable.
+- **Mit `SCAN_AUTH=off`** und ohne Token startet der Scanner nicht; die App bekommt die
+  503-Ersatzantwort. Danach wurden Testcontainer, Netz und Images entfernt.
+
+## Historischer Prüfstand: Version 1.3.0
 
 App und Scanner laufen in einem Container. Funktionsumfang, Scanner-API und
 Datenformat bleiben gleich; gespeicherte Pläne und JSON-Exporte werden unverändert

@@ -2,7 +2,7 @@ FROM nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee1
 
 LABEL org.opencontainers.image.title="Netzplaner" \
       org.opencontainers.image.description="Netzwerkplaner mit lokaler Speicherung im Browser und optionalem Nmap-Scanner" \
-      org.opencontainers.image.version="1.3.0"
+      org.opencontainers.image.version="1.3.1"
 
 # Alpine 3.24: python3 3.14, nmap 7.99, tini 0.19.
 RUN apk add --no-cache python3 nmap tini

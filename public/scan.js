@@ -8,10 +8,11 @@ const SCANNER_HINTS = new Map([
   ["Origin und Host der Anfrage müssen übereinstimmen.", "Der Scanner lehnt die Anfrage ab, weil Origin und Host nicht übereinstimmen. Ein Reverse Proxy muss den ursprünglichen Host-Header weitergeben."],
   ["SCAN_TOKEN muss 24 bis 256 druckbare Zeichen ohne Leerzeichen enthalten.", "Der Scanner ist deaktiviert: SCAN_TOKEN muss 24 bis 256 druckbare Zeichen ohne Leerzeichen enthalten."],
   ["Kein Scan-Netz freigegeben (SCAN_ALLOWED_CIDRS).", "Der Scanner ist deaktiviert: In SCAN_ALLOWED_CIDRS ist kein Netz freigegeben."],
-  ["SCAN_ALLOWED_CIDRS enthält ungültige oder nicht private IPv4-Netze.", "Der Scanner ist deaktiviert: SCAN_ALLOWED_CIDRS enthält ungültige oder nicht private IPv4-Netze."]
+  ["SCAN_ALLOWED_CIDRS enthält ungültige oder nicht private IPv4-Netze.", "Der Scanner ist deaktiviert: SCAN_ALLOWED_CIDRS enthält ungültige oder nicht private IPv4-Netze."],
+  ["SCAN_AUTH muss token oder none sein.", "Der Scanner ist deaktiviert: SCAN_AUTH muss token oder none sein."]
 ]);
 const scannerHint = async (response) => { try { return SCANNER_HINTS.get((await response.json())?.error); } catch { return undefined; } };
-const HTTP_MESSAGES = { 400: "Bitte Scanbereich und Profil prüfen.", 401: "Der Scanner-Token ist ungültig. Bitte erneut verbinden.", 403: "Dieser Scanbereich ist nicht freigegeben.", 409: "Im Scanner läuft bereits ein Scan. Bitte später erneut versuchen.", 429: "Bitte einige Sekunden warten und erneut starten.", 503: "Der Scanner läuft nicht. SCAN_TOKEN und SCAN_ALLOWED_CIDRS in der Container-Konfiguration prüfen oder XML importieren." };
+const HTTP_MESSAGES = { 400: "Bitte Scanbereich und Profil prüfen.", 401: "Der Scanner-Token ist ungültig. Bitte erneut verbinden.", 403: "Dieser Scanbereich ist nicht freigegeben.", 409: "Im Scanner läuft bereits ein Scan. Bitte später erneut versuchen.", 429: "Bitte einige Sekunden warten und erneut starten.", 503: "Der Scanner läuft nicht. SCAN_TOKEN oder SCAN_AUTH=none und SCAN_ALLOWED_CIDRS in der Container-Konfiguration prüfen oder XML importieren." };
 
 /** No network or browser-storage operations occur until an explicit user action. */
 export function initScanner({ getState, onImport, fetch: fetchOverride } = {}) {
@@ -43,7 +44,7 @@ export function initScanner({ getState, onImport, fetch: fetchOverride } = {}) {
     requestController = controller;
     const timeout = setTimeout(() => controller.abort(), 12000);
     try {
-      const response = await requestFetch(`/api/scan${path}`, { ...options, cache: "no-store", credentials: "omit", redirect: "error", headers: { ...(authenticated ? { Authorization: `Bearer ${token}` } : {}), ...options.headers }, signal: controller.signal });
+      const response = await requestFetch(`/api/scan${path}`, { ...options, cache: "no-store", credentials: "omit", redirect: "error", headers: { ...(authenticated && token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers }, signal: controller.signal });
       if (!response.ok) {
         if (response.status === 401) { token = ""; config = null; stopPoll(); job = null; cancelRequested = false; $("#scan-connection").textContent = "Nicht verbunden. Bitte Token erneut eingeben."; }
         const hint = response.status === 403 ? await scannerHint(response) : undefined;
@@ -126,11 +127,14 @@ export function initScanner({ getState, onImport, fetch: fetchOverride } = {}) {
   listen($("#scan-connect"), "click", async () => {
     if (locked()) return;
     const entered = $("#scan-token").value.trim(); $("#scan-token").value = "";
-    if (entered.length < 24) { status("Bitte einen Scanner-Token mit mindestens 24 Zeichen eingeben.", true); return; }
-    token = entered; config = null; connecting = true; controls(); status("Scanner wird verbunden …");
+    token = ""; config = null; connecting = true; controls(); status("Scanner wird verbunden …");
     try {
       const availability = await api("/status", {}, false);
       if (!availability.enabled) throw new Error(SCANNER_HINTS.get(availability.reason) || "Der lokale Scanner ist deaktiviert. Bitte Container-Konfiguration prüfen oder XML importieren.");
+      // SCAN_AUTH=none on the server: no token is sent, a typed one is discarded.
+      const open = availability.auth === "none";
+      if (!open && entered.length < 24) throw new Error("Bitte einen Scanner-Token mit mindestens 24 Zeichen eingeben.");
+      token = open ? "" : entered;
       const next = await api("/config");
       if (!Array.isArray(next.allowedCidrs) || !next.allowedCidrs.length || next.allowedCidrs.some((cidr) => typeof cidr !== "string" || cidr.length > 32) || !Array.isArray(next.profiles)) throw new Error("Die Scanner-Konfiguration konnte nicht gelesen werden.");
       const profiles = next.profiles.filter((profile) => profile && Object.hasOwn(PROFILE_NAMES, profile.id));
@@ -138,7 +142,7 @@ export function initScanner({ getState, onImport, fetch: fetchOverride } = {}) {
       config = next;
       $("#scan-profile").replaceChildren(...profiles.map((profile) => { const option = document.createElement("option"); option.value = profile.id; option.textContent = PROFILE_NAMES[profile.id]; return option; }));
       $("#scan-networks").textContent = `Freigegeben: ${next.allowedCidrs.join(", ")}. Maximal 256 Adressen je Scan.`;
-      $("#scan-connection").textContent = "Scanner verbunden. Der Token bleibt im Arbeitsspeicher dieser Sitzung.";
+      $("#scan-connection").textContent = open ? "Scanner verbunden. Der Scanner verlangt kein Token (SCAN_AUTH=none)." : "Scanner verbunden. Der Token bleibt im Arbeitsspeicher dieser Sitzung.";
       status("Scanner bereit. Bereich und Profil auswählen und bewusst starten.");
     } catch (error) { token = ""; config = null; $("#scan-connection").textContent = "Nicht verbunden. XML-Import ist weiterhin verfügbar."; status(error.message, true); }
     finally { connecting = false; controls(); }
