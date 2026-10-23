@@ -2,7 +2,7 @@
 # PID 1 is tini -g: stop signals reach nginx, the restart loop and the scanner.
 set -eu
 
-if [ -n "${SCAN_TOKEN:-}" ]; then
+if [ -n "${SCAN_TOKEN:-}" ] || [ "${SCAN_AUTH:-}" = none ]; then
     delay="${SCANNER_RESTART_DELAY:-5}"
     (
         while :; do
@@ -12,9 +12,9 @@ if [ -n "${SCAN_TOKEN:-}" ]; then
         done
     ) &
 else
-    echo "netzplaner: SCAN_TOKEN ist leer, Scanner nicht gestartet"
+    echo "netzplaner: SCAN_TOKEN ist leer und SCAN_AUTH nicht none, Scanner nicht gestartet"
 fi
 
-# nginx needs neither the token nor the allowlist.
-unset SCAN_TOKEN SCAN_ALLOWED_CIDRS
+# nginx needs none of the scanner settings.
+unset SCAN_TOKEN SCAN_ALLOWED_CIDRS SCAN_AUTH
 exec nginx -g 'daemon off;'

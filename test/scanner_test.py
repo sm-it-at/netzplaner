@@ -101,6 +101,21 @@ class ConfigTests(unittest.TestCase):
                 self.assertFalse(settings.enabled)
                 self.assertIn("Kein Scan-Netz", settings.reason)
 
+    def test_scan_auth_none_needs_no_token_and_other_values_disable(self):
+        self.assertEqual(config().auth, "token")
+        for value in ("none", " None "):
+            with self.subTest(value=value):
+                settings = config(SCAN_AUTH=value, SCAN_TOKEN="")
+                self.assertTrue(settings.enabled)
+                self.assertEqual((settings.auth, settings.token), ("none", ""))
+        self.assertEqual(config(SCAN_AUTH="none").token, "")
+        self.assertFalse(config(SCAN_AUTH="none", SCAN_ALLOWED_CIDRS="").enabled)
+        for value in ("off", "false", "0"):
+            with self.subTest(value=value):
+                settings = config(SCAN_AUTH=value)
+                self.assertFalse(settings.enabled)
+                self.assertIn("SCAN_AUTH", settings.reason)
+
     def test_server_listens_on_loopback_by_default(self):
         self.assertEqual(inspect.signature(scanner.make_server).parameters["address"].default, ("127.0.0.1", 8090))
 
@@ -287,11 +302,27 @@ class ApiTests(unittest.TestCase):
     def test_unauthenticated_status_reveals_no_ranges_and_health_is_minimal(self):
         status, data, headers = self.request("GET", "/api/scan/status", authorized=False)
         self.assertEqual(status, 200)
-        self.assertEqual(set(data), {"enabled", "reason"})
+        self.assertEqual(set(data), {"enabled", "reason", "auth"})
+        self.assertEqual(data["auth"], "token")
         self.assertNotIn("192.168", json.dumps(data))
         self.assertEqual(headers["Cache-Control"], "no-store")
         self.assertNotIn("Access-Control-Allow-Origin", headers)
         self.assertEqual(self.request("GET", "/healthz", authorized=False)[:2], (200, {"ok": True}))
+
+    def test_scan_auth_none_skips_token_but_keeps_origin_check(self):
+        open_manager = scanner.ScanManager(config(SCAN_AUTH="none", SCAN_TOKEN=""), popen=FakeRunner(), interval=0)
+        original, self.server = self.server, SimpleNamespace(manager=open_manager)
+        try:
+            status, data, _ = self.request("GET", "/api/scan/status", authorized=False)
+            self.assertEqual((status, data["enabled"], data["auth"]), (200, True, "none"))
+            self.assertEqual(self.request("GET", "/api/scan/config", authorized=False)[0], 200)
+            body = {"target": "192.168.1.10", "profile": "discovery"}
+            self.assertEqual(self.request("POST", "/api/scan/jobs", body, authorized=False, headers={"Origin": "https://evil.example"})[0], 403)
+            status, job, _ = self.request("POST", "/api/scan/jobs", body, authorized=False)
+            self.assertEqual(status, 202)
+            self.assertEqual(wait_job(open_manager, job["id"])["status"], "completed")
+        finally:
+            self.server = original
 
     def test_every_job_endpoint_and_config_require_bearer_token(self):
         for method, path, body in (("GET", "/api/scan/config", None), ("GET", "/api/scan/jobs/" + "a" * 32, None),
