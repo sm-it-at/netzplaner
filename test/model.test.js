@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   STATE_LIMITS, createPorts, getConflicts, getSummary, removeDevice, removePort, validateConnection,
-  normalizeState, duplicateDevice, getNetworkIssues, devicesToCsv, createHistory, demoState
+  normalizeState, duplicateDevice, getNetworkIssues, devicesToCsv, createHistory, demoState, uid
 } from "../public/model.js";
 
 function fixture() {
@@ -10,6 +10,14 @@ function fixture() {
   const b = { id: "b", name: "B", ports: createPorts(2, "b") };
   return { devices: [a, b], connections: [] };
 }
+
+test("IDs created in one burst stay unique, so a reloaded plan needs no repair", () => {
+  const ids = Array.from({ length: 20000 }, () => uid("port"));
+  assert.equal(new Set(ids).size, ids.length);
+  assert.ok(ids.every((id) => /^[a-zA-Z0-9_-]{1,100}$/.test(id)));
+  const devices = Array.from({ length: 39 }, (_, index) => ({ id: `d${index}`, name: "Switch", type: "switch", ports: createPorts(256, `d${index}`) }));
+  assert.deepEqual(normalizeState({ devices, connections: [] }).warnings, []);
+});
 
 test("summary counts occupied and free ports", () => {
   const state = fixture();

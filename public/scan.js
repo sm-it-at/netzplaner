@@ -1,7 +1,13 @@
 import { DEVICE_TYPES } from "./model.js";
-import { canonicalIPv4, normalizeScanHost, parseNmapXml, SCAN_LIMITS } from "./scan-model.js";
+import { canonicalIPv4, normalizeScanHost, parseNmapXml, scanTargetError, SCAN_LIMITS } from "./scan-model.js";
 
 const PROFILE_NAMES = { discovery: "Geräte suchen", ports: "Häufige TCP-Ports" };
+// Only these fixed scanner texts are explained; any other backend text stays hidden.
+const SCANNER_HINTS = new Map([
+  ["Der Scan wurde nach 180 Sekunden beendet.", "Der Scan wurde nach 180 Sekunden beendet. Bitte einen kleineren Bereich scannen oder zuerst „Geräte suchen“ verwenden."],
+  ["Origin und Host der Anfrage müssen übereinstimmen.", "Der Scanner lehnt die Anfrage ab, weil Origin und Host nicht übereinstimmen. Ein Reverse Proxy muss den ursprünglichen Host-Header weitergeben."]
+]);
+const scannerHint = async (response) => { try { return SCANNER_HINTS.get((await response.json())?.error); } catch { return undefined; } };
 const HTTP_MESSAGES = { 400: "Bitte Scanbereich und Profil prüfen.", 401: "Der Scanner-Token ist ungültig. Bitte erneut verbinden.", 403: "Dieser Scanbereich ist nicht freigegeben.", 409: "Im Scanner läuft bereits ein Scan. Bitte später erneut versuchen.", 429: "Bitte einige Sekunden warten und erneut starten.", 503: "Der lokale Scanner ist nicht verfügbar. Bitte Docker-Konfiguration prüfen oder XML importieren." };
 
 /** No network or browser-storage operations occur until an explicit user action. */
@@ -37,7 +43,8 @@ export function initScanner({ getState, onImport, fetch: fetchOverride } = {}) {
       const response = await requestFetch(`/api/scan${path}`, { ...options, cache: "no-store", credentials: "omit", redirect: "error", headers: { ...(authenticated ? { Authorization: `Bearer ${token}` } : {}), ...options.headers }, signal: controller.signal });
       if (!response.ok) {
         if (response.status === 401) { token = ""; config = null; stopPoll(); job = null; cancelRequested = false; $("#scan-connection").textContent = "Nicht verbunden. Bitte Token erneut eingeben."; }
-        throw new Error(HTTP_MESSAGES[response.status] || "Der Scanner hat die Anfrage nicht abgeschlossen. Bitte erneut versuchen.");
+        const hint = response.status === 403 ? await scannerHint(response) : undefined;
+        throw new Error(hint || HTTP_MESSAGES[response.status] || "Der Scanner hat die Anfrage nicht abgeschlossen. Bitte erneut versuchen.");
       }
       const payload = await response.json();
       if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("Die Scanner-Antwort konnte nicht gelesen werden.");
@@ -109,7 +116,7 @@ export function initScanner({ getState, onImport, fetch: fetchOverride } = {}) {
       if (next.status === "running") { status(`${cancelRequested ? "Abbruch angefordert" : "Scan läuft"}: ${job.target} · ${PROFILE_NAMES[job.profile]}`); schedulePoll(); }
       else if (next.status === "completed") { const completed = job; finishJob(`Scan abgeschlossen: ${completed.target}. Bitte Ergebnisse prüfen und auswählen.`); showResults(next.hosts, `Scan: ${completed.target} · ${PROFILE_NAMES[completed.profile]}`); }
       else if (next.status === "cancelled") finishJob("Scan abgebrochen. Es wurden keine Geräte übernommen.");
-      else if (next.status === "failed") finishJob("Der Scan ist fehlgeschlagen. Scanner-Konfiguration und Erreichbarkeit des Netzes prüfen.", true);
+      else if (next.status === "failed") finishJob(SCANNER_HINTS.get(next.error) || "Der Scan ist fehlgeschlagen. Scanner-Konfiguration und Erreichbarkeit des Netzes prüfen.", true);
       else throw new Error("Der Scanner hat einen unbekannten Status geliefert.");
     } catch (error) { if (!disposed && version === pollVersion) { status(`${error.message} ${job ? "Der Scanstatus ist unklar; bei Bedarf den Abbruch anfordern." : "Der Scanstatus ist unklar. Bitte erneut verbinden und den Scanner prüfen."}`, true); controls(); } }
   };
@@ -137,8 +144,8 @@ export function initScanner({ getState, onImport, fetch: fetchOverride } = {}) {
     event.preventDefault();
     if (locked() || !config) return;
     const target = $("#scan-target").value.trim(), profile = $("#scan-profile").value;
-    const parts = target.split("/");
-    if (!canonicalIPv4(parts[0]) || parts.length > 2 || (parts.length === 2 && (!/^(?:2[4-9]|3[0-2])$/.test(parts[1])))) { status("Bitte eine IPv4-Adresse oder ein Netz mit /24 bis /32 eingeben (maximal 256 Adressen).", true); return; }
+    const targetError = scanTargetError(target);
+    if (targetError) { status(targetError, true); return; }
     starting = true; controls(); status(`Scan wird gestartet: ${target} · ${PROFILE_NAMES[profile]}`);
     try {
       const next = await api("/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target, profile }) });

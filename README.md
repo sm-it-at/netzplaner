@@ -1,8 +1,11 @@
 # Netzplaner
 
 Interaktiver Netzwerkplaner für Homelab-Netze, als statische Website in Nginx.
-Version 1.2.0 ergänzt die Geräte-, Port- und Verbindungsplanung um einen optionalen
-Nmap-Netzwerkscan und den lokalen Import von Nmap-XML-Dateien.
+Seit Version 1.2.0 ergänzen ein optionaler Nmap-Netzwerkscan und der lokale Import
+von Nmap-XML-Dateien die Geräte-, Port- und Verbindungsplanung. Version 1.2.1 macht
+das Scanprofil **Häufige TCP-Ports** für ganze /24-Netze nutzbar, ergänzt eine
+Content-Security-Policy und legt auch das Scanner-Image über Version und Prüfsumme
+fest. Die Änderungen im Einzelnen stehen in [PRUEFUNG.md](PRUEFUNG.md).
 
 ## Funktionen
 
@@ -49,13 +52,14 @@ docker compose ps
 ```
 
 Danach auf dem Docker-Host öffnen: **http://localhost:8080**.
-Beim ersten Build lädt Docker das offizielle Nginx-Basisimage herunter.
-Es ist über Version und Prüfsumme festgelegt und unterstützt Linux amd64 / x86-64
-und ARM64. Für die statische App werden weder Node.js noch Python oder eine
+Beim ersten Build lädt Docker das offizielle Nginx-Basisimage herunter, mit dem
+Profil `scan` zusätzlich das offizielle Python-Image für den Scanner. Beide sind über
+Version und Prüfsumme festgelegt und unterstützen Linux amd64 / x86-64 und ARM64.
+Für die statische App werden weder Node.js noch Python oder eine
 Datenbank benötigt. Der optionale Scanner läuft als eigener Container mit Python
 und Nmap; ohne das Profil `scan` wird dieser Dienst nicht gestartet.
 
-Ein vorgefertigtes Image-Archiv für Version 1.2.0 ist nicht Teil dieses Repositories.
+Ein vorgefertigtes Image-Archiv für Version 1.2.1 ist nicht Teil dieses Repositories.
 Der Schnellstart baut das Image aus dem aktuellen Quellcode. Die früheren Nachweise
 zu einem separat erstellten Image der Version 1.0.0 stehen in [PRUEFUNG.md](PRUEFUNG.md).
 
@@ -110,18 +114,29 @@ im Arbeitsspeicher; es wird weder im Plan noch im Browser-Speicher abgelegt.
 Es wird zur Anmeldung am Scanner über dieselbe App-Adresse übertragen. Für
 Zugriff über nicht vertrauenswürdige Netze HTTPS am Reverse Proxy verwenden.
 
+Start und Abbruch eines Scans nimmt der Scanner nur an, wenn der `Origin` der
+Browseranfrage zum `Host`-Header passt. Ein vorgeschalteter Reverse Proxy muss
+deshalb den ursprünglichen `Host` weitergeben. Caddy, Traefik und Nginx Proxy Manager
+tun das standardmäßig; ein eigener Nginx braucht `proxy_set_header Host $host;`.
+Fehlt das, meldet die App, dass Origin und Host nicht übereinstimmen.
+
 Die Profile haben unterschiedliche Aussagekraft:
 
 - **Geräte suchen:** Nmap prüft mit unprivilegierten TCP-Probes auf die Ports
   22, 80, 443, 445, 3389 und 8080, ob ein Gerät antwortet. Auch eine Antwort
   „Port geschlossen“ kann ein erreichbares Gerät bestätigen. Geräte, die alle
   Probes filtern, können fehlen.
-- **Häufige TCP-Ports:** Ein TCP-Connect-Scan prüft eine feste Auswahl häufiger Ports.
-  Er meldet offene Ports; Geräte ohne offenen Port dieser Auswahl können fehlen.
-  Die angezeigten Dienstnamen stammen aus der Nmap-Porttabelle und sind Hinweise,
-  keine bestätigte Software- oder Versionserkennung.
+- **Häufige TCP-Ports:** Nmap sucht zuerst wie bei **Geräte suchen** nach erreichbaren
+  Geräten und prüft danach nur diese per TCP-Connect-Scan auf 29 häufige Ports,
+  jeweils höchstens acht Geräte gleichzeitig. Gemeldet werden Geräte mit mindestens
+  einem offenen Port dieser Auswahl. Geräte, die alle Such-Probes filtern, fehlen
+  auch hier. Die angezeigten Dienstnamen stammen aus der Nmap-Porttabelle und sind
+  Hinweise, keine bestätigte Software- oder Versionserkennung.
 
-Ein Scan läuft höchstens 180 Sekunden und kann abgebrochen werden. Der Dienst
+Nmap sendet höchstens 50 Probes pro Sekunde und gibt ein einzelnes Gerät nach
+30 Sekunden auf. Ein Scan läuft höchstens 180 Sekunden und kann abgebrochen werden.
+Endet er an dieser Grenze, sagt die App das ausdrücklich; dann einen kleineren
+Bereich wählen. Der Dienst
 behält höchstens acht Aufträge im Arbeitsspeicher; Ergebnisse sind bis zu
 15 Minuten ab Scanstart abrufbar. Abgelaufene Einträge werden bei weiteren
 Anfragen entfernt.
@@ -204,13 +219,15 @@ docker compose down
 
 Der Container läuft als Benutzer `101:101`, mit schreibgeschütztem Dateisystem
 und einem temporären Verzeichnis unter `/tmp`. Compose prüft die Erreichbarkeit regelmäßig.
+Nginx sendet eine Content-Security-Policy: Skripte, Stylesheets und Verbindungen
+kommen nur von der eigenen Adresse, und fremde Seiten dürfen die App nicht einbetten.
 
 ## Herkunft und Prüfung
 
 Quelle: Netzplaner, Sites-Version 1, Projekt `appgprj_6aacd418d2e4819196af072953d42453`,
 Quellstand `fcea38ae38a80793ff165b4372f9fa9b3dc7c41d`.
-Diese ursprüngliche Version bildet die Grundlage der Docker-App; Version 1.2.0
-entwickelt die Laufzeitdateien und Tests weiter.
+Diese ursprüngliche Version bildet die Grundlage der Docker-App; die Versionen
+1.1.0 bis 1.2.1 entwickeln die Laufzeitdateien und Tests weiter.
 
 Für Entwicklung und Tests werden Node.js 26 oder eine von jsdom unterstützte
 Version ab Node.js 22.22.2 (22.x) beziehungsweise 24.15.0 (24.x) sowie npm benötigt:
@@ -229,4 +246,6 @@ Prüfergebnisse, historische Nachweise und offene Laufzeitprüfungen stehen in
 [PRUEFUNG.md](PRUEFUNG.md).
 
 Technische Referenzen: [offizielles Nginx-Image](https://hub.docker.com/_/nginx),
-[Docker Compose](https://docs.docker.com/reference/compose-file/services/).
+[offizielles Python-Image](https://hub.docker.com/_/python),
+[Docker Compose](https://docs.docker.com/reference/compose-file/services/),
+[Nmap-Zeitsteuerung](https://nmap.org/book/man-performance.html).

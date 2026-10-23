@@ -250,6 +250,7 @@ test("app reports failed storage and retains edits in the current session", asyn
   app.click("[data-duplicate-device]");
   assert.match(app.$("#storage-status").textContent, /Speichern fehlgeschlagen/);
   assert.equal(app.$("#storage-status").classList.contains("storage-warning"), true);
+  assert.ok(app.$("#storage-status .status-dot"), "The colored status dot survives re-rendering");
   assert.equal(app.rows("#device-list .device-row").length, 4);
   assert.equal(app.saved().devices.length, 3);
   app.click('[data-action="undo"]');

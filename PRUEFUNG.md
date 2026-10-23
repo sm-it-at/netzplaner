@@ -1,6 +1,96 @@
-# Prüfstand vom 22.10.2026
+# Prüfstand vom 23-10-2026
 
-## Aktueller Quellstand: Version 1.2.0
+## Aktueller Quellstand: Version 1.2.1
+
+Fehlerbehebung und Härtung auf Basis von 1.2.0. Funktionsumfang und Datenformat
+bleiben gleich; gespeicherte Pläne und JSON-Exporte aus 1.2.0 werden unverändert
+gelesen. Pläne bleiben im Browser erhalten, solange Adresse und Port der App gleich
+bleiben.
+
+### Änderungen
+
+- **Portprofil für /24-Netze (Scanner):** Bis 1.2.0 lief „Häufige TCP-Ports“ mit
+  `-Pn` gegen jede Adresse des Ziels. Bei `--max-rate 50` braucht ein /24 dafür
+  mindestens 256 × 29 / 50 = 148,5 Sekunden ohne eine einzige Wiederholung; die
+  harte Grenze liegt bei 180 Sekunden. Außerdem bildet Nmap bei 29 TCP-Ports
+  Hostgruppen von 64 Geräten (`determineScanGroupSize()` in `scan_engine.cc`:
+  `MAX(1024 / 29, 64)`), verteilt die Probes reihum auf alle Geräte der Gruppe und
+  startet die Uhr von `--host-timeout` mit der ersten Port-Probe eines Geräts. Eine
+  Gruppe braucht so mindestens 64 × 29 / 50 = 37,1 Sekunden und überschreitet die
+  30 Sekunden je Gerät. Abgelaufene Geräte fehlen im Ergebnis, ohne dass der Scan
+  als fehlgeschlagen gilt. 1.2.1 sucht zuerst mit denselben sechs TCP-Probes wie
+  „Geräte suchen“ und prüft danach nur erreichbare Geräte in Gruppen zu höchstens
+  acht (`--max-hostgroup 8`): höchstens 8 × 29 × 2 / 50 = 9,3 Sekunden je Gruppe
+  einschließlich einer Wiederholung. Folge: Geräte, die alle sechs Such-Probes
+  filtern, fehlen jetzt auch in diesem Profil. Grundlage ist der Nmap-Quelltext
+  (Stand `master`, 23-10-2026), keine Messung.
+- **Hinweise statt Sammelmeldung:** Endet ein Scan an der 180-Sekunden-Grenze, nennt
+  die App das samt Abhilfe. Weist der Scanner Start oder Abbruch ab, weil `Origin`
+  und `Host` nicht übereinstimmen, verweist die App auf den Host-Header des Reverse
+  Proxy statt auf eine angeblich fehlende Netzfreigabe. Beide Texte stehen in einer
+  festen Liste; alle anderen Servertexte bleiben verborgen.
+- **Zieleingabe:** Ein Netz mit gesetzten Hostbits wie `192.168.1.77/24` wird vor dem
+  Senden mit der passenden Netzadresse beantwortet (`192.168.1.0/24`). Bisher kam
+  dafür die allgemeine Meldung „Bitte Scanbereich und Profil prüfen.“
+- **IDs:** `uid()` kombiniert einen Sitzungszähler mit 48 Zufallsbits aus
+  `crypto.getRandomValues()`, das anders als `crypto.randomUUID()` auch über
+  einfaches HTTP verfügbar ist. Vorher waren es fünf Zeichen aus `Math.random()` je
+  Millisekunde. Doppelte IDs hätten beim nächsten Laden die Speicherung gesperrt;
+  in einer Messung mit 2 Millionen IDs der alten Funktion trat keine Kollision auf.
+- **Speicheranzeige:** Der farbige Statuspunkt verschwand nach dem ersten Rendern;
+  die Warnfarbe aus `styles.css` war dadurch wirkungslos.
+- **JSON-Import:** `accept=".json,application/json"`, damit Systeme ohne
+  JSON-MIME-Zuordnung die Datei im Dateidialog anbieten.
+- **Nginx:** Content-Security-Policy mit `script-src 'self'`, `connect-src 'self'`,
+  `object-src 'none'`, `base-uri 'none'` und `frame-ancestors 'none'`. Inline-Styles
+  bleiben erlaubt, weil Topologie und Belegungsbalken Positionen und Farben als
+  `style`-Attribut setzen. `nosniff` und `Referrer-Policy` gelten jetzt auch für
+  Scanner- und Ersatzantworten.
+- **Basisimages:** Der Scanner nutzt `python:3.13.17-alpine3.24` mit Digest
+  `sha256:fa0bb0d0cd7c7d6cef30a69094d32ac2b71c7304c87c6107fec100e1ee4eda02`
+  (vorher ungepinnt `python:3.13-alpine`). Der Nginx-Pin folgt dem aktuellen Stand
+  des Tags `1.30.6-alpine`, `sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951`.
+  Docker Hub hat den Tag am 22-10-2026 um 16:50 UTC neu gebaut; der bisherige Digest
+  `sha256:c59d1f8b…` ist weiter abrufbar. Beide Images bekamen OCI-Labels mit Version 1.2.1.
+- **Profilnamen:** Die Scanner-API meldet die Namen wie die Oberfläche
+  („Geräte suchen“, „Häufige TCP-Ports“).
+
+### Prüfungen am 23-10-2026
+
+- 60 JavaScript-Tests bestehen (Node.js 26.8.1), 23 Python-Tests bestehen
+  (Python 3.13.15). Neu sind Tests für Netzadressen, den Zeit- und den Origin-Hinweis
+  samt Schutz gegen untergeschobene Texte, eindeutige IDs in Serie, den Statuspunkt
+  und das Zeitbudget je Hostgruppe im Portprofil.
+- Gegenprobe gegen den Code von 1.2.0: Die neuen Tests schlagen fehl. Ausnahmen sind
+  zwei 403-Fälle, die das bisherige Verhalten absichern, und der ID-Test. Er schlug
+  in einem von 37 Läufen fehl, ließ sich aber nicht wiederholen.
+- `node --check` für die vier JavaScript-Laufzeitdateien, `py_compile` für
+  `scanner/server.py`.
+- Nmap 7.80 (Windows) akzeptiert beide Argumentlisten unverändert. Als Ziel diente
+  eine leere Liste (`-iL` auf eine leere Datei), es wurde kein Paket gesendet. Die
+  echte XML-Ausgabe mit DOCTYPE und Stylesheet-Anweisung läuft fehlerfrei durch
+  `parse_xml`.
+- Digests und Plattformen beider Basisimages per Registry-API geprüft; amd64 und
+  arm64 sind in beiden Manifest-Indizes enthalten.
+- Browser: Chromium im Browserbereich der Claude-Desktop-App, App unter
+  `http://127.0.0.1` von einem Python-Testserver mit den Headern aus `nginx.conf`
+  und einer 503-Antwort für `/api/scan/`. Ergebnis: kein CSP-Verstoß und kein
+  Konsolenfehler außer der erwarteten 503-Antwort; drei Beispielgeräte mit 14 Ports;
+  Duplizieren mit neuen IDs und leerer IP; `Ctrl+Z` und `Ctrl+Shift+Z`; Scanner ohne
+  Dienst mit verständlichem Hinweis, geleertem Token-Feld und ohne Eintrag im
+  Browser-Speicher; Nmap-XML mit vorhandener IP, `-Pn`-Gerät ohne Port und HTML im
+  Hostnamen (als Text angezeigt); Übernahme zweier Geräte mit Diensten als Notiz;
+  Neuladen ohne Reparaturhinweis; bei 375 px Breite kein horizontaler Seitenüberlauf.
+
+Weiterhin offen: Auf dem Prüfrechner gibt es kein Docker. `docker compose config`,
+Build, `nginx -t`, Healthchecks und die Header-Auslieferung durch Nginx selbst sind
+ungeprüft; die CSP wurde mit dem Testserver nachgestellt. Es lief kein Netzwerkscan.
+Die Laufzeit des Portprofils auf einem eigenen /24 auf dem Zielhost messen und hier
+eintragen; erwartet werden die Gerätesuche plus etwa Anzahl erreichbarer Geräte × 29 / 50
+Sekunden. Druckvorschau, SVG und CSV in Zielanwendungen sowie Firefox und Safari sind
+nicht geprüft.
+
+## Historischer Prüfstand: Version 1.2.0
 
 Die Version ergänzt einen optionalen Nmap-Dienst sowie Auswahl und Import von
 Scanergebnissen. Der Standardbetrieb ohne Compose-Profil `scan` stellt weiterhin
@@ -118,12 +208,18 @@ Adressen umfassen und höchstens 180 Sekunden laufen. Token und Scanergebnisse
 dürfen nicht im Plan-Export oder Browser-Speicher landen; ausschließlich
 übernommene Geräte gehören zum gespeicherten Plan.
 
+Für 1.2.1 zusätzlich das Profil **Häufige TCP-Ports** einmal über das ganze eigene
+/24 laufen lassen. Dauer und Anzahl der gemeldeten Geräte hier eintragen und mit
+**Geräte suchen** im selben Netz vergleichen. Ist ein Reverse Proxy vorgeschaltet,
+Scanstart und Abbruch auch über dessen Adresse prüfen. Die Antwort-Header von `/` mit
+`curl -sI http://localhost:8080/` auf die Content-Security-Policy kontrollieren.
+
 Diese Schritte sind ausstehende Zielhost-Prüfungen, keine bereits bestätigten Ergebnisse.
 
 ## Historische Nachweise: Version 1.0.0
 
 Die folgenden Belege stammen vom ursprünglichen Docker-Quellpaket und dessen
-damaliger Repository-Prüfung am 22.10.2026:
+damaliger Repository-Prüfung am 22-10-2026:
 
 - Die vier damaligen Laufzeitdateien stimmten bytegenau mit dem aus der
   ursprünglichen Erstellung wiederhergestellten Netzplaner-Code überein.

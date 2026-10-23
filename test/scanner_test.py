@@ -142,12 +142,20 @@ class ManagerTests(unittest.TestCase):
         command, kwargs = runner.calls[0]
         self.assertFalse(kwargs["shell"])
         self.assertEqual(command[-1], "192.168.1.10")
-        for value in ("--unprivileged", "-n", "-sT", "-Pn", "--open"):
+        for value in ("--unprivileged", "-n", "-sT", "--open", scanner.DISCOVERY_PROBES):
             self.assertIn(value, command)
-        for value in ("-sS", "-sV", "-O", "-A", "--script"):
+        for value in ("-Pn", "-sS", "-sV", "-O", "-A", "--script"):
             self.assertNotIn(value, command)
         self.assertLessEqual(len(scanner.PORTS), 30)
         self.assertIn("finishedAt", result)
+
+    def test_ports_profile_host_group_fits_rate_and_host_timeout(self):
+        command = scanner.ScanManager.command("192.168.1.0/24", "ports")
+        option = lambda name: command[command.index(name) + 1]
+        rate, group = int(option("--max-rate")), int(option("--max-hostgroup"))
+        timeout, attempts = int(option("--host-timeout").removesuffix("s")), int(option("--max-retries")) + 1
+        # Every probe of one host group, retried once, must fit into the per-host timeout.
+        self.assertLessEqual(group * len(option("-p").split(",")) * attempts / rate, timeout)
 
     def test_discovery_fixed_probe_ports(self):
         command = scanner.ScanManager.command("192.168.1.0/24", "discovery")

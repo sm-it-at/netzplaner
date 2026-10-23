@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
-import { canonicalIPv4, mergeScanHosts, normalizeScanHost, parseNmapXml, SCAN_LIMITS } from "../public/scan-model.js";
+import { canonicalIPv4, mergeScanHosts, normalizeScanHost, parseNmapXml, scanTargetError, SCAN_LIMITS } from "../public/scan-model.js";
 const dom = new JSDOM("");
 const parse = (xml) => parseNmapXml(xml, dom.window.DOMParser);
 const empty = () => ({ devices: [], connections: [] });
@@ -12,6 +12,13 @@ const service = (port, protocol = "tcp", state = "open") => `<ports><port protoc
 test("scan IPv4 addresses must use valid canonical decimal octets", () => {
   for (const invalid of ["1.2.3.999", "01.2.3.4", "1.2.3", "127.1", "::1", "1.2.3.4/24", {}, "1e2.2.3.4", "1.2.3.4\nignored"]) assert.equal(canonicalIPv4(invalid), null);
   assert.equal(canonicalIPv4(" 192.168.1.8 "), "192.168.1.8");
+});
+
+test("scan targets follow the scanner rule: one address or a canonical network of at most 256 addresses", () => {
+  for (const valid of ["192.168.1.10", "192.168.1.0/24", "10.1.2.128/25", "10.1.2.3/32"]) assert.equal(scanTargetError(valid), null);
+  for (const invalid of ["192.168.0.0/16", "192.168.1.0/33", "192.168.1.0/", "192.168.001.1", " 192.168.1.1", "192.168.1.0/24/1", "", undefined]) assert.match(scanTargetError(invalid), /maximal 256/);
+  assert.equal(scanTargetError("192.168.1.77/24"), "Bitte die Netzadresse angeben: 192.168.1.0/24 statt 192.168.1.77/24.");
+  assert.match(scanTargetError("10.0.0.200/26"), /10\.0\.0\.192\/26/);
 });
 
 test("scan merge preserves every existing device and connection and never creates physical ports", () => {

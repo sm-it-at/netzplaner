@@ -10,6 +10,20 @@ export function canonicalIPv4(value) {
   return parts.every((part) => part <= 255) ? parts.join(".") : null;
 }
 
+/** Mirrors the scanner's rule: one address or a canonical network with at most 256 addresses. */
+export function scanTargetError(value) {
+  const [address, prefix, ...rest] = typeof value === "string" ? value.split("/") : [];
+  if (canonicalIPv4(address) !== address || rest.length || (prefix !== undefined && !/^(?:2[4-9]|3[0-2])$/.test(prefix))) {
+    return "Bitte eine IPv4-Adresse oder ein Netz mit /24 bis /32 eingeben (maximal 256 Adressen).";
+  }
+  if (prefix === undefined) return null;
+  const size = 2 ** (32 - Number(prefix));
+  const numeric = address.split(".").reduce((sum, part) => sum * 256 + Number(part), 0);
+  if (numeric % size === 0) return null;
+  const network = [24, 16, 8, 0].map((shift) => Math.floor((numeric - numeric % size) / 2 ** shift) % 256).join(".");
+  return `Bitte die Netzadresse angeben: ${network}/${prefix} statt ${value}.`;
+}
+
 export function normalizeScanHost(source) {
   if (!record(source)) return null;
   const ip = canonicalIPv4(source.ip);
